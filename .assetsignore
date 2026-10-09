@@ -1,0 +1,12 @@
+*.bat
+*.ps1
+README.md
+.assetsignore
+wrangler.jsonc
+server/*
+server/**
+.wrangler/**
+.gitignore
+.git/**
+node_modules/**
+.claude/**

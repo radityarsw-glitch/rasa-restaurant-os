@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="id" data-theme="espresso">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#f6f0e6" />
+  <title>RASA — Restaurant OS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="#overview" data-page="overview"><span class="brand-mark">r.</span><span class="brand-name">rasa<span class="brand-sub">RESTAURANT OS</span></span></a>
+      <div class="branch" data-action="open-maps" title="Buka lokasi cabang di Google Maps"><span class="branch-icon">⌂</span><span><b>Rasa & Rona</b><small>Jakarta Selatan</small></span><span class="branch-status is-open" id="branchStatus">BUKA</span><span class="chevron">⌄</span></div>
+      <div class="nav-label">WORKSPACE</div>
+      <nav class="nav-list">
+        <button class="nav-item active" data-page="overview"><span>◫</span> Ringkasan</button>
+        <button class="nav-item" data-page="kitchen"><span>♨</span> Dapur / KDS <i class="live-dot"></i></button>
+      </nav>
+      <div class="nav-label nav-spaced">KASIR</div>
+      <nav class="nav-list">
+        <button class="nav-item" data-page="orders"><span>▤</span> Pesanan <i class="nav-count">8</i></button>
+        <button class="nav-item" data-page="reservations"><span>▦</span> Reservasi</button>
+        <button class="nav-item" data-page="menu"><span>☷</span> Menu & produk</button>
+      </nav>
+      <div class="nav-label nav-spaced">PELAYAN</div>
+      <nav class="nav-list">
+        <button class="nav-item" data-page="pelayan"><span>&#9635;</span> Pelayan <i class="nav-count pelayan-count">0</i></button>
+      </nav>
+      <div class="nav-label nav-spaced">OPERASIONAL</div>
+      <nav class="nav-list">
+        <button class="nav-item" data-page="inventory"><span>▧</span> Persediaan</button>
+        <button class="nav-item" data-page="recipes"><span>✽</span> Resep / BOM</button>
+        <button class="nav-item" data-page="procurement"><span>⇄</span> Pengadaan</button>
+        <button class="nav-item" data-page="finance"><span>⌁</span> Keuangan</button>
+        <button class="nav-item" data-page="reports"><span>▥</span> Laporan</button>
+        <button class="nav-item" data-page="alerts"><span>🔔</span> Alert Center</button>
+        <button class="nav-item" data-page="audit"><span>⛨</span> Audit log</button>
+        <button class="nav-item" data-page="settings"><span>⚙</span> Pengaturan</button>
+      </nav>
+      <div class="sidebar-bottom"><div class="help-card"><span class="help-icon">✳</span><b>Butuh bantuan?</b><small>Tim kami siap membantu.</small><button>Hubungi support <span>↗</span></button></div><div class="profile" data-page="settings" title="Buka pengaturan profil"><div class="avatar">RA</div><span><b>Raka Adinata</b><small>Owner</small></span><span class="more">•••</span></div></div>
+    </aside>
+    <div class="sidebar-backdrop" id="sidebarBackdrop" aria-hidden="true"></div>
+    <main class="main">
+      <header class="topbar"><button class="mobile-menu" id="menuToggle" aria-label="Buka menu navigasi">☰</button><div class="breadcrumb">Workspace <span>/</span> <b id="crumb">Ringkasan</b></div><div class="top-actions"><span class="sync-pill" id="syncStatus" hidden></span><button class="open-status" type="button" id="openStatus" data-action="toggle-open" aria-pressed="true"><i></i><span class="os-name" id="osName">Restoran</span><span class="os-sep">·</span><b class="os-state" id="osState">BUKA</b></button><button class="icon-btn" type="button" data-action="global-search" aria-label="Cari (Ctrl+K)">⌕</button><button class="icon-btn notification" type="button" data-action="open-alerts" aria-label="Notifikasi & peringatan"><span class="bell">🔔</span><i></i></button><div class="top-avatar" data-page="settings" title="Pengaturan profil" role="button" tabindex="0">RA</div></div></header>
+      <section class="page-content" id="pageContent"></section>
+    </main>
+    <nav class="tabbar" id="tabbar" aria-label="Navigasi cepat">
+      <button class="nav-item" data-page="overview"><span>◫</span><em>Ringkasan</em></button>
+      <button class="nav-item" data-page="orders"><span>▤</span><em>Pesanan</em></button>
+      <button class="nav-item" data-page="kitchen"><span>♨</span><em>Dapur</em></button>
+      <button class="nav-item" data-page="menu"><span>☷</span><em>Menu</em></button>
+      <button class="nav-item tab-more" data-action="open-sidebar"><span>☰</span><em>Lainnya</em></button>
+    </nav>
+  </div>
+  <div class="toast" id="toast"></div>
+  <script src="core/api.js"></script>
+  <script src="core/sync.js"></script>
+  <script src="core/auth.js"></script>
+  <script src="core/insights.js"></script>
+  <script src="app.js"></script>
+  <script src="core/roles.js"></script>
+</body>
+</html>
