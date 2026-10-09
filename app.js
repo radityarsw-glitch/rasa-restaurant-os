@@ -5,7 +5,7 @@ const SEED_ORDERS=[
  {id:'#RS-2838',guest:'Salsa Aulia',items:'3 item',type:'QR Meja 05',total:'Rp 137.000',status:'Diproses',cls:'preparing',time:'12:31'},
  {id:'#RS-2837',guest:'Dito Mahendra',items:'2 item',type:'QR Meja 02',total:'Rp 95.000',status:'Dibayar',cls:'paid',time:'12:26'}
 ];
-const pageNames={overview:'Ringkasan',orders:'Pesanan',kitchen:'Dapur / KDS',pelayan:'Pelayan',reservations:'Reservasi',menu:'Menu & produk',inventory:'Persediaan',recipes:'Resep / BOM',procurement:'Pengadaan',finance:'Keuangan',reports:'Laporan',settings:'Pengaturan'};
+const pageNames={overview:'Ringkasan',orders:'Pesanan',reservations:'Reservasi',menu:'Menu & produk',kitchen:'Dapur / KDS',pelayan:'Antar Ke Meja',inventory:'Persediaan',recipes:'Resep / BOM',procurement:'Pengadaan',finance:'Keuangan',reports:'Laporan',settings:'Pengaturan'};
 const money=n=>'Rp '+(Number(n)||0).toLocaleString('id-ID');
 const parseRp=s=>parseInt(String(s||'').replace(/[^\d]/g,''),10)||0;
 /* 6 pilihan tampilan warna (color grading) — disimpan di store.theme */
@@ -76,7 +76,7 @@ function tableStatusAt(no,date,startMs,endMs,excludeId){
   const conflict=findResConflict(no,date,startMs,endMs,excludeId);
   return conflict?{busy:true,conflict:conflict}:{busy:false,conflict:null};
 }
-/* Meja yang sedang terisi SEKARANG (dipakai Ringkasan & Pelayan) */
+/* Meja yang sedang terisi SEKARANG (dipakai Ringkasan & Antar Ke Meja) */
 function usedTables(){
   const now=Date.now(),t={};
   activeReservations().forEach(r=>{
@@ -289,12 +289,12 @@ function kitchenPage(){
     '<span class="ticket-status">'+(btn||'<span class="status ready">Menunggu diantar</span>')+ageTag(o)+'</span></div>';
   const col=(title,list,btnFn,empty)=>'<div class="kitchen-column"><h3>'+title+' <span class="nav-count">'+list.length+'</span></h3>'+
     (list.length?list.map(o=>ticket(o,btnFn?btnFn(o):'')).join(''):'<div class="empty-state">'+empty+'</div>')+'</div>';
-  return `${heading('Kitchen display system','Pesanan reservasi muncul di kolom <b>Terjadwal</b> dan otomatis naik ke <b>Baru masuk</b> saat jam reservasi tiba. Setelah ditandai <b>Siap</b>, pesanan langsung muncul di workspace <b>Pelayan</b> untuk di-Acc dan diantar ke meja.','<button class="btn" data-action="clear-orders"><span class="btn-icon">🗑</span> Kosongkan</button><button class="btn" data-action="refresh-kitchen">↻ Segarkan</button>')}
+  return `${heading('Kitchen display system','Pesanan reservasi muncul di kolom <b>Terjadwal</b> dan otomatis naik ke <b>Baru masuk</b> saat jam reservasi tiba. Setelah ditandai <b>Siap</b>, pesanan langsung muncul di workspace <b>Antar Ke Meja</b> untuk diambil pelayan dan diantar ke meja.','<button class="btn" data-action="clear-orders"><span class="btn-icon">🗑</span> Kosongkan</button><button class="btn" data-action="refresh-kitchen">↻ Segarkan</button>')}
   <div class="kitchen-board">
     ${col('Terjadwal (reservasi)',scheduled,o=>'<button class="btn btn-primary" data-action="start-prep:'+esc(String(o.id))+'">Mulai menyiapkan →</button>','Tidak ada pesanan terjadwal.')}
     ${col('Baru masuk',incoming,o=>'<button class="btn btn-primary" data-action="start-prep:'+esc(String(o.id))+'">Mulai menyiapkan →</button>','Belum ada pesanan baru.')}
     ${col('Sedang disiapkan',prep,o=>'<button class="btn" data-action="mark-ready:'+esc(String(o.id))+'">Tandai siap →</button>','Tidak ada antrean dapur.')}
-    ${col('Siap disajikan',ready,null,'Belum ada yang siap. Setelah dapur menandai Siap, pesanan menunggu Acc pelayan di workspace Pelayan.')}
+    ${col('Siap disajikan',ready,null,'Belum ada yang siap. Setelah dapur menandai Siap, pesanan menunggu Acc pelayan di workspace Antar Ke Meja.')}
   </div>`
 }
 function advanceOrder(id,cls,status){
@@ -308,7 +308,7 @@ function advanceOrder(id,cls,status){
   render(currentPage);
   toast(o.id+' → '+status+'.');
 }
-/* ---------- Workspace Pelayan ----------
+/* ---------- Workspace Antar Ke Meja ----------
    Alur penyajian: dapur menandai pesanan "Siap" → pesanan muncul di sini →
    pelayan meng-Acc ("Acc & antar") → makanan diantar ke meja → pelayan
    menandai "Sampai di meja" sehingga status pesanan menjadi Tersaji. */
@@ -345,14 +345,13 @@ function pelayanPage(){
     '<td><span class="status '+(r.status==='ready'?'ready':'preparing')+'">'+(r.status==='ready'?'Terkonfirmasi':'Menunggu')+'</span></td></tr>';
   }).join('')
     :'<tr><td colspan="5" class="empty-state">Belum ada reservasi — tambah lewat halaman Reservasi.</td></tr>';
-  return `${heading('Pelayan / antar pesanan','Alur disederhanakan: pesanan <b>siap dari dapur</b> → pelayan menekan <b>Acc &amp; antar</b> → langsung ditandai <b>Tersaji</b>. Tidak ada tahap "sedang diantar" agar alur kerja tidak membingungkan.','<button class="btn" data-action="refresh-pelayan"><span class="btn-icon">↻</span> Segarkan</button>')}
+  return `${heading('Antar Ke Meja','Alur disederhanakan: pesanan <b>siap dari dapur</b> → pelayan menekan <b>Acc &amp; antar</b> → langsung ditandai <b>Tersaji</b>. Tidak ada tahap "sedang diantar" agar alur kerja tidak membingungkan.','<button class="btn" data-action="refresh-pelayan"><span class="btn-icon">↻</span> Segarkan</button>')}
   <div class="stats-grid">
     ${stat('Menunggu Acc pelayan',String(ready.length),'siap dari dapur · perlu diantar','✓',ready.length?'segera antar':'lancar')}
     ${stat('Sudah tersaji',String(served.length),'selesai diantar hari ini','☑',served.length?served.length+' meja':'belum ada')}
     ${stat('Sedang dimasak',String(prep.length),'masih di dapur','♨',prep.length?prep.length+' antrean':'lancar')}
     ${stat('Meja terisi',used+' / '+TABLE_COUNT,'berdasarkan reservasi aktif','▦',resList.length+' jadwal berikutnya')}
   </div>
-  <div class="res-next is-empty"><span class="res-next-icon">⚑</span><div><b>Alur kerja pelayan</b><small>Dapur menandai <b>Siap</b> → pelayan menekan <b>Acc &amp; antar ✓</b> → pesanan langsung berstatus <b>Tersaji</b>. Status meja dihitung otomatis dari data reservasi.</small></div></div>
   <div class="kitchen-board">
     ${pelayanCol('Siap diantar',toServe,o=>o.cls==='delivering'
       ?'<button class="btn" data-action="deliver-done:'+esc(String(o.id))+'">Sampai di meja ✓</button>'
@@ -2738,7 +2737,7 @@ document.addEventListener('click',e=>{
   if(action.startsWith('deliver-done:')){
     if(!window.canPerm('orders','update')){toast('Role Anda tidak punya izin mengubah pesanan.');return}
     advanceOrder(arg,'served','Tersaji');return}
-  if(action==='refresh-pelayan'){render('pelayan');toast('Daftar antaran disegarkan.');return}
+  if(action==='refresh-pelayan'){render('pelayan');toast('Daftar antar ke meja disegarkan.');return}
   if(action==='refresh-kitchen'){render('kitchen');toast('Antrean dapur disegarkan.');return}
   if(action==='menu-search-clear'){clearMenuSearch();return}
   if(action==='open-sidebar'){openSidebar();return}

@@ -187,7 +187,7 @@ window.RasaRoles = (function () {
     </div>
     <div class="quick-row">
       <button class="btn btn-primary" data-action="booking">＋ Reservasi baru</button>
-      <button class="btn" data-page="pelayan">▤ Antar pesanan</button>
+      <button class="btn" data-page="pelayan">▤ Antar ke meja</button>
       <button class="btn" data-page="kitchen">♨ Lihat dapur</button>
       <button class="btn" data-page="orders">▤ Pesanan meja</button>
     </div>

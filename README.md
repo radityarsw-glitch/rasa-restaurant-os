@@ -25,7 +25,7 @@ Setiap data yang Anda isi **tersimpan otomatis** — dulu hanya di `localStorage
 
 - **Font:** display **Fraunces** (judul, angka penting) + teks **Plus Jakarta Sans** via Google Fonts.
 - **Color grading (6 pilihan):** Ambar Emas, Hutan Zamrud, Samudra Biru, Anggur Mawar, **Koral Laut** (nuansa restoran seafood, merah bata/coral), dan **Midnight Neon** (gelap). Dipilih lewat **Pengaturan → Color grading**, tersimpan otomatis.
-- **Kontras aman di semua tema:** gradien puncak panel/kartu memakai variabel `--surface-hi` (di tema gelap menjadi gelap, bukan tetap putih), jadi judul dan angka terang tidak pernah jadi putih di atas putih. **Semua tombol** memakai varian warna yang lebih terang dan tegas (gradien utama per tema, label tinta penuh, tombol berbahaya dengan teks putih murni), dan **Midnight Neon** memakai palet terang untuk teks, border, sidebar, badge, serta tombol agar mudah dibaca di latar gelap. Setiap color grading diuji: teks utama, caption, label tombol, badge status, dan sisi sidebar semuanya memenuhi rasio kontras **≥ 4.5 : 1 (WCAG AA)**.
+- **Kontras aman di semua tema:** gradien puncak panel/kartu memakai variabel `--surface-hi` (di tema gelap menjadi gelap, bukan tetap putih), jadi judul dan angka terang tidak pernah jadi putih di atas putih. **Aturan tulisan tombol:** warna teks SELALU berlawanan dengan warna latarnya — latar terang (emas, hijau muda, cyan) → tulisan tinta gelap, latar gelap (biru laut, merah, maroon, anggur, coklat) → tulisan **putih**; nilainya diambil dari variabel `--primary-on` per tema. **Tombol staf** (Nonaktifkan/Aktifkan/Wewenang/Hapus) memakai latar solid + teks putih di semua tema. **Midnight Neon** memakai palet terang untuk teks, border, sidebar, serta badge agar mudah dibaca di latar gelap. Setiap color grading diuji otomatis: teks utama, caption, 11 jenis label tombol, badge status, dan sisi sidebar semuanya memenuhi rasio kontras **≥ 4.5 : 1 (WCAG AA)**.
 - **Tombol Reset Data** (Ringkasan) ditetapkan ulang di blok CSS terakhir sehingga selalu tampil jelas: latar merah gelap + tulisan putih di setiap color grading.
 - **Notifikasi:** kartu notifikasi melayang di **pojok kanan atas** (maksimal 4, hilang otomatis ~8 detik) dan daftarnya bisa dibuka lewat tombol **🔔 lonceng** di bilah atas — **klik notifikasi untuk langsung menuju halaman tujuannya** (misal reservasi yang mendekat, stok menipis, pesanan baru).
 - **Menu produk:** foto produk atau **inisial nama** agar daftar menu lebih rapi dan konsisten.
@@ -62,12 +62,13 @@ Sidebar dikelompokkan per peran, bukan lagi daftar panjang satu tumpukan:
 
 | Kelompok | Isi |
 | --- | --- |
-| **WORKSPACE** | Ringkasan · Dapur / KDS |
+| **WORKSPACE** | Ringkasan |
 | **KASIR** | Pesanan · Reservasi · Menu & produk (transaksi harian dalam satu tempat) |
-| **PELAYAN** | Workspace **Pelayan** (acc & antar pesanan) |
+| **KITCHEN** | **Dapur / KDS** — papan tampilan dapur untuk antrean masak |
+| **PELAYAN** | Workspace **Antar Ke Meja** (acc & antar pesanan) |
 | **OPERASIONAL** | Persediaan, Resep/BOM, Pengadaan, Keuangan, Laporan, Alert, Audit log, Pengaturan |
 
-Kelompok yang tidak berhak diakses peran login akan disembunyikan otomatis; workspace Pelayan memakai modul izin **Pesanan** (`orders`).
+Kelompok yang tidak berhak diakses peran login akan disembunyikan otomatis; workspace **Antar Ke Meja** memakai modul izin **Pesanan** (`orders`), sedangkan **Dapur / KDS** memakai modul izin **Kitchen Display** (`kitchen`).
 
 ## Izin & wewenang (permission)
 
@@ -89,20 +90,20 @@ Yang terjadi begitu Owner menyimpan perubahan — **tanpa staf perlu login ulang
 
 Izin yang sama tetap ditegakkan di backend (`server/permissions.js` + pemeriksaan di tiap endpoint), jadi menyembunyikan menu di sisi klien bukan satu-satunya pengaman.
 
-## Alur penyajian: dapur → pelayan → meja
+## Alur penyajian: dapur → antar ke meja
 
-Status pesanan kini berjalan: **Dibayar → Diproses → Siap → Tersaji** (tahap "sedang diantar" dihapus dari workspace Pelayan agar alur kerja lebih sederhana — data pesanan lama ber-status Diantar tetap aman dan bisa langsung ditandai Tersaji).
+Status pesanan kini berjalan: **Dibayar → Diproses → Siap → Tersaji** (tahap "sedang diantar" dihapus dari workspace **Antar Ke Meja** agar alur kerja lebih sederhana — data pesanan lama ber-status Diantar tetap aman dan bisa langsung ditandai Tersaji).
 
-1. Dapur menandai pesanan **Siap** di *Dapur / KDS* — pesanan langsung muncul di workspace **Pelayan**.
+1. Dapur menandai pesanan **Siap** di workspace **Dapur / KDS** — pesanan langsung muncul di workspace **Antar Ke Meja**.
 2. Pelayan menekan **Acc & antar ✓** (perlu izin ubah pesanan) — satu langkah, pesanan langsung berstatus **Tersaji**.
 
-Halaman Pelayan menampilkan dua kolom sederhana: *Siap diantar* dan *Selesai · tersaji*, plus statistik, status meja terisi (dihitung dari reservasi aktif), dan daftar reservasi berikutnya. Badge di sidebar menunjukkan jumlah yang menunggu Acc; Alert Center punya pintasan langsung ke workspace ini.
+Halaman **Antar Ke Meja** menampilkan dua kolom sederhana: *Siap diantar* dan *Selesai · tersaji*, plus statistik, status meja terisi (dihitung dari reservasi aktif), dan daftar reservasi berikutnya. Badge di sidebar menunjukkan jumlah yang menunggu Acc; Alert Center punya pintasan langsung ke workspace ini.
 
 ## Modul yang tersedia
 
 - Ringkasan penjualan, channel, pesanan, stok, dan jurnal (semuanya mengikuti data)
 - Daftar pesanan (termasuk filter Diantar/Tersaji) dan Kitchen Display System
-- Workspace Pelayan (acc & antar pesanan)
+- Workspace **Antar Ke Meja** (acc & antar pesanan)
 - Reservasi meja: pilihan meja & menu, deteksi bentrok jadwal, kapasitas tamu, hitung mundur live, **status penyajian pesanan terhubung di kartu jadwal**, konfirmasi, dan riwayat pembatalan
 - Katalog menu
 - Persediaan dan pengadaan bahan baku
@@ -141,11 +142,12 @@ git push -u origin main                 :: GitHub Actions otomatis build & deplo
 
 ### Pengujian otomatis
 
-Dua skrip pengujian dijalankan terhadap `wrangler dev --port 8790 --local` (D1 lokal):
+Empat skrip pengujian dijalankan terhadap `wrangler dev --port 8790 --local` (D1 lokal):
 
 - `.uji-permisi.ps1` — 12 skenario API permission: cabut/kembalikan wewenang per staf (tanpa menyentuh staf lain), validasi ketat modul & aksi, data tetap utuh, tulis & API permission ditolak, preset per role berlaku langsung.
 - `.uji-frontend.ps1` — uji headless Chrome: DOM badge status jadwal, foto `object-fit: contain`, menu/halaman ditolak saat wewenang dicabut, notifikasi pencabutan langsung saat halaman terbuka (poll izin 20 detik), serta data tetap terkirim ke staf yang dicabut.
-- `.uji-kontras.ps1` — mengukur rasio kontras label tombol terhadap latarnya di 6 tema (48 pemeriksaan, ambang WCAG AA 4.5:1).
+- `.uji-kontras.ps1` — mengukur rasio kontras label tombol terhadap latarnya di 6 tema (66 pemeriksaan = 6 tema x 11 jenis tombol, ambang WCAG AA 4.5:1) sekaligus memastikan tulisan tombol selalu berlawanan dengan warna latarnya.
+- `.uji-staf.ps1` — uji headless Chrome dengan sesi login sungguhan: panel Staf &amp; role tampil lengkap (Nonaktifkan, Wewenang, Hapus, Tambah staf) dan warna keempat tombol staf diukur di 6 tema (24 pemeriksaan, ambang 4.5:1).
 
 Folder aset yang disajikan `wrangler dev` bisa dioverride lewat variabel lingkungan `RASA_ASSETS` (default: `%TEMP%\rasa-assets`).
 

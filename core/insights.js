@@ -79,15 +79,15 @@ window.RasaInsights = (function () {
     if (ready.length) out.push({
       id: 'serve-' + ready.length, level: 'info', module: 'orders', page: 'pelayan',
       title: ready.length + ' pesanan siap diantar',
-      detail: 'Menunggu Acc pelayan untuk diantar ke meja tamu — buka workspace Pelayan.',
-      actionLabel: 'Buka workspace Pelayan'
+      detail: 'Menunggu Acc pelayan untuk diantar ke meja tamu — buka workspace Antar Ke Meja.',
+      actionLabel: 'Buka Antar Ke Meja'
     });
     const onWay = (typeof orders !== 'undefined' ? orders : []).filter(o => o.cls === 'delivering');
     if (onWay.length) out.push({
       id: 'deliver-' + onWay.length, level: 'info', module: 'orders', page: 'pelayan',
       title: onWay.length + ' pesanan sedang diantar',
       detail: 'Pelayan sedang membawa pesanan ke meja — tandai "Sampai di meja" setelah tersaji.',
-      actionLabel: 'Buka workspace Pelayan'
+      actionLabel: 'Buka Antar Ke Meja'
     });
     const today = new Date();
     const iso = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');

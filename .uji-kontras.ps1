@@ -18,6 +18,9 @@ $failed = 0
 $probes = @(
   @{ label = 'tombol sekunder';     cls = 'btn' },
   @{ label = 'tombol utama';        cls = 'btn-primary' },
+  @{ label = 'tombol tambah';       cls = 'btn-add' },
+  @{ label = 'tombol mini';         cls = 'btn-mini' },
+  @{ label = 'tombol hantu';        cls = 'btn-ghost' },
   @{ label = 'tombol berbahaya';    cls = 'btn-danger' },
   @{ label = 'tautan aksi';         cls = 'link-btn' },
   @{ label = 'aksi staf wewenang';  cls = 'staff-act is-perms' },
@@ -38,18 +41,27 @@ function chan(v){v/=255;return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4);
 function lum(c){return 0.2126*chan(c[0])+0.7152*chan(c[1])+0.0722*chan(c[2]);}
 function ratio(a,b){var l1=lum(a),l2=lum(b);return (Math.max(l1,l2)+0.05)/(Math.min(l1,l2)+0.05);}
 function parse(c){var m=c.match(/[\d.]+/g);if(!m)return null;return [Number(m[0]),Number(m[1]),Number(m[2])];}
-/* semua warna latar tombol: stop gradien (kecuali yang transparan) + warna dasar solid */
+function parseHex(h){
+  h=h.replace('#','');
+  if(h.length===3||h.length===4) h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+  if(h.length!==6) return null;
+  return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)];
+}
+/* Semua warna latar tombol:
+   1. setiap stop gradien berbentuk HEX (#rrggbb) dihitung sebagai latar -
+      ini warna aksen yang sebenarnya terlihat mata;
+   2. lapis kilau transparan (rgba dengan alpha < 0.5) DIABAIKAN, karena hanya
+      membumbui gradien dan bukan warna latar sendiri;
+   3. background-color dihitung hanya bila nyata (alpha > 0.5). */
 function backgrounds(el){
   var cs=getComputedStyle(el),out=[];
   var bi=cs.backgroundImage;
-  if(bi&&bi!=='none'){ (bi.match(/rgba?\([^)]+\)/g)||[]).forEach(function(s){
-    var a=(s.match(/[\d.]+/g)||[])[3];
-    if(a!==undefined&&Number(a)<0.5) return;
-    var p=parse(s); if(p) out.push(p);
+  if(bi&&bi!=='none'){ (bi.match(/#[0-9a-fA-F]{6}/g)||[]).forEach(function(h){
+    var p=parseHex(h); if(p) out.push(p);
   }); }
   var bc=parse(cs.backgroundColor);
-  var al=(cs.backgroundColor.match(/[\d.]+/g)||[]);
-  if(bc&&(!al[3]||Number(al[3])>0.4)) return out.concat([bc]);
+  var alpha=(cs.backgroundColor.match(/[\d.]+/g)||[])[3];
+  if(bc && (alpha===undefined || Number(alpha)>0.5)) return out.concat([bc]);
   if(out.length) return out;
   var p=el.parentElement;   /* tanpa latar sendiri: pakai latar panel/halaman */
   while(p){
@@ -67,7 +79,16 @@ function run(theme){
     probe.appendChild(d);
     var fg=parse(getComputedStyle(d).color), worst=99, worstBg='';
     backgrounds(d).forEach(function(bg){var r=ratio(fg,bg); if(r<worst){worst=r;worstBg='rgb('+bg.join(',')+')';}});
-    rows.push([theme,it.label,worst.toFixed(2),worstBg,worst>=4.5?'LULUS':'GAGAL'].join('|'));
+    /* aturan kontras: tulisan harus berlawanan dengan warna latarnya.
+       latar terang  -> tulisan gelap
+       latar gelap   -> tulisan putih (perbedaan luminansi >= 0.35) */
+    var fgL=lum(fg), bgL=lum(parse(worstBg.replace(/rgb\(|\)/g,''))), ok=true, why='';
+    var light=bgL>=0.35;
+    if(light&&fgL>=0.35){ok=false;why='latar terang tetapi tulisan terang';}
+    if(!light&&fgL<0.35){ok=false;why='latar gelap tetapi tulisan gelap';}
+    if(!light&&Math.abs(bgL-fgL)<0.35){ok=false;why='latar & tulisan terlalu mirip';}
+    if(worst<4.5){ok=false;why=why?why+' / kontras rendah':'kontras di bawah 4.5:1';}
+    rows.push([theme,it.label,worst.toFixed(2),worstBg,(ok?'LULUS':'GAGAL'+(why?' ('+why+')':''))].join('|'));
     probe.removeChild(d);
   });
   return rows;
@@ -103,7 +124,7 @@ $arg = @('--headless=new', '--disable-gpu', '--no-first-run', ('--user-data-dir=
   '--virtual-time-budget=8000', '--dump-dom', ($base + '/test-kontras.html'))
 Start-Process -FilePath $chrome -ArgumentList $arg -Wait -NoNewWindow `
   -RedirectStandardOutput $out -RedirectStandardError $err | Out-Null
-$dom = Get-Content $out -Raw -ErrorAction SilentlyContinue
+$dom = Get-Content $out -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
 Remove-Item $prof -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item $out, $err -Force -ErrorAction SilentlyContinue
 
@@ -119,7 +140,7 @@ foreach ($r in $rows) {
   $p = $r -split '\|'
   $ratio = [double]$p[2]
   if ($ratio -lt $min) { $min = $ratio }
-  if ($p[4] -eq 'GAGAL') { Fail ('{0} / {1}: kontras {2} (latar {3})' -f $p[0], $p[1], $p[2], $p[3]) }
+  if ($p[4] -like 'GAGAL*') { Fail ('{0} / {1}: kontras {2} (latar {3}) - {4}' -f $p[0], $p[1], $p[2], $p[3], $p[4]) }
 }
 Ok ('{0} pemeriksaan ({1} tema x {2} tombol), kontras terendah {3}:1' -f $rows.Count, $themes.Count, $probes.Count, $min.ToString('0.00'))
 if ($min -ge 4.5) { Ok 'semua label tombol memenuhi WCAG AA (>= 4.5:1)' }

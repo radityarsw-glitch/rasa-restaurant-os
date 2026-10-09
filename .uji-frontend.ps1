@@ -46,7 +46,7 @@ function Dump($url, $file, $budget) {
     ('--user-data-dir=' + $prof), ('--virtual-time-budget=' + $budget), '--dump-dom', $url)
   Start-Process -FilePath $chrome -ArgumentList $a -Wait -NoNewWindow `
     -RedirectStandardOutput $out -RedirectStandardError $err | Out-Null
-  $dom = (Get-Content $out -Raw -ErrorAction SilentlyContinue)
+  $dom = (Get-Content $out -Raw -Encoding UTF8 -ErrorAction SilentlyContinue)
   if (-not $dom) { $dom = '' }
   Set-Content -Path (Join-Path $domDir $file) -Value $dom -Encoding UTF8
   if (-not $dom) { Write-Host ("  ! chrome kosong: " + (Get-Content $err -Raw -ErrorAction SilentlyContinue)) }
@@ -164,7 +164,7 @@ $live = @'
 </body>
 '@
 $idx = Join-Path $assets 'index.html'
-$ic = Get-Content $idx -Raw
+$ic = Get-Content $idx -Raw -Encoding UTF8
 if ($ic -notmatch 'RASA_REVOKER') {
   $ic = $ic -replace '</body>', $live
   Set-Content -Path $idx -Value $ic -Encoding UTF8
