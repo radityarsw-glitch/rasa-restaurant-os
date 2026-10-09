@@ -185,7 +185,11 @@ export async function putData(req, env) {
     if (same) { unchanged.push(key); continue; }
     const problem = nextVal === undefined ? null : validateValue(key, nextVal);
     if (problem) { invalid.push({ key, reason: problem }); continue; }
-    if (mod !== 'misc' && !can(a.perms, mod, 'update')) {
+    /* Workspace "Antar Ke Meja" (modul 'antar') juga menulis key pesanan:
+       Acc & antar / Sampai di meja cukup berwewenang antar — modul 'orders'
+       tetap yang utama; keduanya berlaku sebagai izin alternatif. */
+    if (mod !== 'misc' && !can(a.perms, mod, 'update') &&
+        !(mod === 'orders' && can(a.perms, 'antar', 'update'))) {
       denied.push({ key, module: mod });
       continue;
     }

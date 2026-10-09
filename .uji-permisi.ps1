@@ -160,5 +160,49 @@ if ($setA.users.$k2uid) { Fail 'wewenang staf B ikut terganti!' } else { Ok 'sta
 $clean = @{}; $clean[$kuid] = $eff2
 $null = Call 'PUT' '/api/permissions' @{ users = $clean } $ownerTok  # bersihkan
 
+Write-Host "== 13. modul Antar Ke Meja ada di daftar Wewenang =="
+$hasAntar = $false
+$p.matrix.PSObject.Properties | ForEach-Object {
+  if ($_.Name -eq 'owner') { return }
+  if ($_.Value.PSObject.Properties.Name -contains 'antar') { $hasAntar = $true }
+}
+if ($hasAntar) { Ok 'preset role memuat modul antar (Antar Ke Meja)' } else { Fail 'modul antar tidak ada di preset role' }
+if ($p.matrix.owner.PSObject.Properties.Name -contains 'antar') { Ok 'owner tetap penuh: antar ikut terkirim' } else { Fail 'matriks owner tanpa antar' }
+
+# Pesanan DICABUT, Antar Ke Meja DIBERIKAN -> tulis key pesanan tetap boleh
+$eff13 = @{}
+$p.matrix.kitchen.PSObject.Properties | ForEach-Object { $eff13[$_.Name] = @($_.Value) }
+$eff13['orders'] = @()
+$eff13['antar'] = @('read', 'update')
+$u13 = @{}; $u13[$kuid] = $eff13
+$set13 = Call 'PUT' '/api/permissions' @{ users = $u13 } $ownerTok
+if (-not $set13.ok) { Fail 'set override antar ditolak server' }
+$me13 = Call 'GET' '/api/auth/me' $null $staffTok
+if (@($me13.permissions.orders).Count -eq 0 -and (@($me13.permissions.antar) -contains 'update')) {
+  Ok 'override: orders = [], antar = [read, update] langsung berlaku'
+} else { Fail 'override orders/antar tidak berlaku' }
+$put13 = Call 'PUT' '/api/data' @{ payload = @{ orders = @(@{ id = 'o1'; item = 'Nasi Goreng'; note = 'antar' }) }; changed = @('orders') } $staffTok
+if (@($put13.applied) -contains 'orders') {
+  Ok 'tulis pesanan DIPERBOLEHKAN hanya lewat wewenang antar'
+} else { Fail 'staf berwewenang antar tidak bisa menulis pesanan' }
+
+# Orders DAN antar sama-sama dicabut -> tulisan pesanan ditolak lagi
+$eff13b = @{}
+$p.matrix.kitchen.PSObject.Properties | ForEach-Object { $eff13b[$_.Name] = @($_.Value) }
+$eff13b['orders'] = @()
+$eff13b['antar'] = @()
+$u13b = @{}; $u13b[$kuid] = $eff13b
+$null = Call 'PUT' '/api/permissions' @{ users = $u13b } $ownerTok
+$put13b = Call 'PUT' '/api/data' @{ payload = @{ orders = @(@{ id = 'o1'; item = 'Nasi Goreng'; note = 'x' }) }; changed = @('orders') } $staffTok
+if (@($put13b.applied) -contains 'orders') {
+  Fail 'staf tanpa orders & antar tetap bisa menulis pesanan!'
+} else { Ok 'orders + antar dicabut: tulisan pesanan DITOLAK server' }
+
+# kembalikan preset bawaan untuk staf ini
+$effR = @{}
+$p.matrix.kitchen.PSObject.Properties | ForEach-Object { $effR[$_.Name] = @($_.Value) }
+$uR = @{}; $uR[$kuid] = $effR
+$null = Call 'PUT' '/api/permissions' @{ users = $uR } $ownerTok
+
 Write-Host ""
 if ($script:failed) { Write-Host 'HASIL: ADA KEGAGALAN'; exit 1 } else { Write-Host 'HASIL: SEMUA LULUS' }

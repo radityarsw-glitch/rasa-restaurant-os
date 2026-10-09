@@ -2653,7 +2653,7 @@ function startKdsTimer(){
    Setiap aksi yang mengubah data dicek dulu di sini (dan tetap divalidasi
    backend pada /api/*), jadi staf yang wewenangnya dicabut tidak hanya
    kehilangan menu — tombol aksinya juga mati. */
-const PERM_MODULE_LABEL={overview:'Ringkasan',pos:'POS / Kasir',orders:'Pesanan',kitchen:'Kitchen Display',tables:'Meja',reservations:'Reservasi',menu:'Menu & produk',inventory:'Persediaan',recipes:'Resep / BOM',procurement:'Pengadaan',staff:'Staf',shifts:'Shift',customers:'Pelanggan',finance:'Keuangan',accounting:'Accounting',reports:'Laporan',analytics:'Analytics',alerts:'Alert Center',audit:'Audit log',settings:'Pengaturan',permissions:'Permission'};
+const PERM_MODULE_LABEL={overview:'Ringkasan',pos:'POS / Kasir',orders:'Pesanan',kitchen:'Kitchen Display',antar:'Antar Ke Meja',tables:'Meja',reservations:'Reservasi',menu:'Menu & produk',inventory:'Persediaan',recipes:'Resep / BOM',procurement:'Pengadaan',staff:'Staf',shifts:'Shift',customers:'Pelanggan',finance:'Keuangan',accounting:'Accounting',reports:'Laporan',analytics:'Analytics',alerts:'Alert Center',audit:'Audit log',settings:'Pengaturan',permissions:'Permission'};
 const PERM_ACTION_LABEL={read:'membuka',create:'menambah',update:'mengubah',delete:'menghapus',approve:'menyetujui',export:'mengekspor'};
 const ACTION_PERM={
   'booking':['reservations','create'],'save-res':['reservations','create'],'res-confirm':['reservations','create'],'res-commit':['reservations','create'],
@@ -2661,7 +2661,7 @@ const ACTION_PERM={
   'add-menu':['menu','create'],'save-menu:':['menu','update'],'edit-menu:':['menu','update'],'delete-menu:':['menu','delete'],
   'add-variant:':['menu','update'],'pick-variant:':['menu','create'],'remove-menu-image':['menu','update'],
   'start-prep:':['orders','update'],'mark-ready:':['orders','update'],'cancel-order:':['orders','update'],'confirm-cancel-order:':['orders','update'],
-  'deliver-start:':['orders','update'],'serve-order:':['orders','update'],'deliver-done:':['orders','update'],'start-prep':['orders','update'],
+  'deliver-start:':['orders|antar','update'],'serve-order:':['orders|antar','update'],'deliver-done:':['orders|antar','update'],'start-prep':['orders','update'],
   'clear-orders':['orders','delete'],'confirm-clear-orders':['orders','delete'],
   'inv-add':['inventory','create'],'inv-edit:':['inventory','update'],'inv-adjust:':['inventory','update'],'save-inv:':['inventory','update'],'save-adjust:':['inventory','update'],'inv-del:':['inventory','delete'],'inv-del-confirm:':['inventory','delete'],
   'recipe-add':['recipes','create'],'recipe-edit:':['recipes','update'],'recipe-save':['recipes','update'],'recipe-remove:':['recipes','delete'],
@@ -2673,9 +2673,13 @@ function actionAllowed(action){
   const key=String(action||'');
   const rule=ACTION_PERM[key]||ACTION_PERM[key.split(':')[0]+':'];
   if(!rule)return true;
-  if(window.canPerm&&window.canPerm(rule[0],rule[1]))return true;
+  /* rule[0] boleh berisi beberapa modul dipisah '|' — cukup satu yang berhak
+     (mis. aksi antar pesanan diperbolehkan oleh modul orders ATAU antar). */
+  const mods=String(rule[0]).split('|');
+  if(window.canPerm&&mods.some(m=>window.canPerm(m,rule[1])))return true;
+  const label=mods.map(m=>PERM_MODULE_LABEL[m]||m).join(' / ');
   toast('Anda tidak punya izin untuk '+PERM_ACTION_LABEL[rule[1]]+' '+
-    (PERM_MODULE_LABEL[rule[0]]||rule[0])+'. Minta Owner memberikan wewenang tersebut.');
+    label+'. Minta Owner memberikan wewenang tersebut.');
   return false;
 }
 let toastTimer;function toast(msg){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),2600)}
@@ -2728,14 +2732,14 @@ document.addEventListener('click',e=>{
   if(action.startsWith('start-prep:')){advanceOrder(arg,'preparing','Diproses');return}
   if(action.startsWith('mark-ready:')){advanceOrder(arg,'ready','Siap');return}
   if(action.startsWith('deliver-start:')){
-    if(!window.canPerm('orders','update')){toast('Role Anda tidak punya izin mengubah pesanan.');return}
+    if(!(window.canPerm('orders','update')||window.canPerm('antar','update'))){toast('Role Anda tidak punya izin mengubah pesanan.');return}
     advanceOrder(arg,'delivering','Diantar');return}
   if(action.startsWith('serve-order:')){
     /* alur disederhanakan: Acc & antar → langsung Tersaji (tanpa tahap "sedang diantar") */
-    if(!window.canPerm('orders','update')){toast('Role Anda tidak punya izin mengubah pesanan.');return}
+    if(!(window.canPerm('orders','update')||window.canPerm('antar','update'))){toast('Role Anda tidak punya izin mengubah pesanan.');return}
     advanceOrder(arg,'served','Tersaji');return}
   if(action.startsWith('deliver-done:')){
-    if(!window.canPerm('orders','update')){toast('Role Anda tidak punya izin mengubah pesanan.');return}
+    if(!(window.canPerm('orders','update')||window.canPerm('antar','update'))){toast('Role Anda tidak punya izin mengubah pesanan.');return}
     advanceOrder(arg,'served','Tersaji');return}
   if(action==='refresh-pelayan'){render('pelayan');toast('Daftar antar ke meja disegarkan.');return}
   if(action==='refresh-kitchen'){render('kitchen');toast('Antrean dapur disegarkan.');return}

@@ -210,8 +210,27 @@ button{font:inherit;color:inherit;cursor:pointer}
   padding:25px 16px 14px;
   display:flex;
   flex-direction:column;
+  /* Bisa digulir di layar laptop/pendek: seluruh menu & bantuan tercapai */
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
+  scrollbar-width:thin;
+  scrollbar-color:rgba(var(--gold-rgb),.45) transparent;
   z-index:4;
   box-shadow:6px 0 30px -22px rgba(0,0,0,.9)}
+/* Anak sidebar tidak boleh menyusut (kalau menyusut, tidak ada yang
+   digulir — isi justru dipadatkan & terpotong). */
+.sidebar>*{flex-shrink:0}
+.sidebar::-webkit-scrollbar{width:9px;height:9px}
+.sidebar::-webkit-scrollbar-track{background:transparent}
+.sidebar::-webkit-scrollbar-thumb{
+  background:rgba(var(--gold-rgb),.45);
+  background-clip:padding-box;
+  border:2px solid transparent;
+  border-radius:9px}
+.sidebar::-webkit-scrollbar-thumb:hover{
+  background:rgba(var(--gold-rgb),.8);
+  background-clip:padding-box}
 
 .brand{
   display:flex;

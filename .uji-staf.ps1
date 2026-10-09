@@ -119,6 +119,72 @@ else {
   if ($worst -ge 4.5) { Ok ('24 kombinasi warna tombol staf (6 tema), kontras terendah ' + $worst.ToString('0.00') + ':1') }
 }
 
+# --- modal Wewenang: daftar modul harus memuat "Antar Ke Meja" ---
+$modalPage = @'
+<!doctype html><meta charset="utf-8"><title>modal wewenang</title>
+<style>body{font:13px sans-serif;padding:10px}</style>
+<div>memuat aplikasi di iframe...</div><pre id="out">pending</pre>
+<script>
+try{localStorage.setItem('restaurant-os:session','__TOKEN__');}catch(e){}
+var f=document.createElement('iframe');
+f.style.cssText='position:fixed;left:-5000px;top:0;width:1280px;height:900px';
+f.src='/#settings';
+document.body.appendChild(f);
+var n=0, clicked=false;
+var iv=setInterval(function(){
+  n++;
+  var d=null;
+  try{d=f.contentDocument}catch(e){}
+  if(!d)return;
+  if(!clicked){
+    var b=d.querySelector('[data-action^="staff-perms:"]');
+    if(!b){ if(n>70){clearInterval(iv);document.getElementById('out').textContent='NO_BUTTON';} return; }
+    clicked=true; b.click(); return;
+  }
+  if(!d.querySelector('.uperm-list')){
+    if(n>70){clearInterval(iv);document.getElementById('out').textContent='NO_MODAL';}
+    return;
+  }
+  clearInterval(iv);
+  var cb=d.querySelector('[data-uperm="antar"]');
+  var head=d.querySelector('.modal-head b');
+  document.getElementById('out').textContent=JSON.stringify({
+    modal:true,
+    head:head?head.textContent:'',
+    rows:d.querySelectorAll('[data-uperm]').length,
+    antar:cb?cb.checked:null,
+    antarText:cb?(cb.parentNode.textContent||'').slice(0,60):''
+  });
+},200);
+</script>
+'@
+$modalPage = $modalPage.Replace('__TOKEN__', $tok)
+Set-Content -Path (Join-Path $assets 'test-staff-modal.html') -Value $modalPage -Encoding UTF8
+
+$prof3 = Join-Path $env:TEMP ('sm-' + [guid]::NewGuid().ToString('N').Substring(0,8))
+$out3  = Join-Path $env:TEMP ('sm-' + [guid]::NewGuid().ToString('N').Substring(0,8) + '.txt')
+$err3  = $out3 + '.err'
+$arg3 = @('--headless=new','--disable-gpu','--no-first-run',('--user-data-dir=' + $prof3),
+  '--virtual-time-budget=15000','--dump-dom',($base + '/test-staff-modal.html'))
+Start-Process -FilePath $chrome -ArgumentList $arg3 -Wait -NoNewWindow `
+  -RedirectStandardOutput $out3 -RedirectStandardError $err3 | Out-Null
+$dom3 = Get-Content $out3 -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
+Remove-Item $prof3 -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item $out3,$err3 -Force -ErrorAction SilentlyContinue
+$m3 = [regex]::Match($dom3, '<pre id="out">([\s\S]*?)</pre>').Groups[1].Value
+if (-not $m3 -or $m3 -eq 'NO_BUTTON' -or $m3 -eq 'NO_MODAL' -or $m3 -eq 'pending') {
+  Fail 'modal Wewenang tidak terbuka di sesi uji (tombol staf tidak ditemukan)'
+} else {
+  try { $j = $m3 | ConvertFrom-Json } catch { $j = $null }
+  if (-not $j) { Fail ('hasil uji modal tidak valid: ' + $m3) }
+  else {
+    if ($j.modal -and ($j.head -like 'Wewenang*')) { Ok ('modal ' + $j.head + ' terbuka') } else { Fail 'modal Wewenang tidak terbuka' }
+    if ($j.rows -ge 22) { Ok ('daftar wewenang memuat ' + $j.rows + ' modul') } else { Fail ('baris modul hanya ' + $j.rows) }
+    if ($j.antar -eq $true -and ($j.antarText -like '*Antar Ke Meja*')) { Ok 'centang "Antar Ke Meja" tampil & tercentang sesuai preset' } else { Fail 'modul Antar Ke Meja tidak ada di modal Wewenang' }
+  }
+}
+Remove-Item (Join-Path $assets 'test-staff-login.html'),(Join-Path $assets 'test-staff-modal.html') -Force -ErrorAction SilentlyContinue
+
 Write-Host ''
 if ($failed -eq 0) { Write-Host 'HASIL: SEMUA LULUS' -ForegroundColor Green; exit 0 }
 Write-Host ("HASIL: " + $failed + " GAGAL") -ForegroundColor Red; exit 1

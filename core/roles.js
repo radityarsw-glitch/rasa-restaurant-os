@@ -15,7 +15,7 @@ window.RasaRoles = (function () {
   /* Halaman lama -> modul permission. Halaman baru memakai nama modul. */
   const PAGE_MODULE = {
     overview: 'overview', orders: 'orders', kitchen: 'kitchen',
-    pelayan: 'orders',
+    pelayan: 'antar',
     reservations: 'reservations', menu: 'menu', inventory: 'inventory',
     procurement: 'procurement', finance: 'finance', reports: 'reports',
     settings: 'settings'
@@ -23,7 +23,8 @@ window.RasaRoles = (function () {
 
   const MODULE_LABELS = [
     ['overview', 'Ringkasan'], ['pos', 'POS / Kasir'], ['orders', 'Pesanan'],
-    ['kitchen', 'Kitchen Display'], ['tables', 'Meja'], ['reservations', 'Reservasi'],
+    ['kitchen', 'Kitchen Display'], ['antar', 'Antar Ke Meja'],
+    ['tables', 'Meja'], ['reservations', 'Reservasi'],
     ['menu', 'Menu & produk'], ['inventory', 'Persediaan'], ['recipes', 'Resep / BOM'],
     ['procurement', 'Pengadaan'], ['staff', 'Staf'], ['shifts', 'Shift'],
     ['customers', 'Pelanggan'], ['finance', 'Keuangan'], ['accounting', 'Accounting'],
@@ -327,10 +328,15 @@ window.RasaRoles = (function () {
     return out;
   }
 
-  function staffPermsModal(id) {
+  async function staffPermsModal(id) {
     const u = (state.staff || []).find(x => String(x.id) === String(id));
     if (!u) { toast('Staf tidak ditemukan.'); return; }
     if (!isOwner()) { toast('Hanya Owner yang boleh mengubah wewenang staf.'); return; }
+    /* Preset role & wewenang khusus harus sudah diambil dari server dulu,
+       supaya centang modal mengikuti keadaan sebenarnya (bukan kosong semua
+       saat Owner membuka modal untuk pertama kali). */
+    if (!state.matrix || !state.userPerms) { await loadPerms(); }
+    if (!state.matrix) { toast('Preset izin role belum dimuat dari server.'); return; }
     const eff = staffEffective(u);
     const rows = MODULE_LABELS.map(([mod, label]) => {
       const on = Array.isArray(eff[mod]) && eff[mod].indexOf('read') >= 0;

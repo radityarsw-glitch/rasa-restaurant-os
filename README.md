@@ -58,7 +58,7 @@ Sidebar menjadi latar belakang yang bisa ditutup dengan sekali ketuk, foto profi
 
 ## Ruang kerja (sidebar)
 
-Sidebar dikelompokkan per peran, bukan lagi daftar panjang satu tumpukan:
+Sidebar dikelompokkan per peran, bukan lagi daftar panjang satu tumpukan. Di layar laptop/pendek sidebar **bisa digulir (scroll)** — kartu bantuan dan profil di bawah tetap terjangkau walau menu panjang:
 
 | Kelompok | Isi |
 | --- | --- |
@@ -68,14 +68,14 @@ Sidebar dikelompokkan per peran, bukan lagi daftar panjang satu tumpukan:
 | **PELAYAN** | Workspace **Antar Ke Meja** (acc & antar pesanan) |
 | **OPERASIONAL** | Persediaan, Resep/BOM, Pengadaan, Keuangan, Laporan, Alert, Audit log, Pengaturan |
 
-Kelompok yang tidak berhak diakses peran login akan disembunyikan otomatis; workspace **Antar Ke Meja** memakai modul izin **Pesanan** (`orders`), sedangkan **Dapur / KDS** memakai modul izin **Kitchen Display** (`kitchen`).
+Kelompok yang tidak berhak diakses peran login akan disembunyikan otomatis; workspace **Antar Ke Meja** memakai modul izin sendiri — **Antar Ke Meja** (`antar`), sedangkan **Dapur / KDS** memakai modul izin **Kitchen Display** (`kitchen`).
 
 ## Izin & wewenang (permission)
 
 Izin ditentukan dua lapis dan **dicek di setiap akses** (bukan hanya saat membuka halaman):
 
-1. **Preset dasar per role** — 20 modul × aksi (baca/tambah/ubah/hapus/setujui/ekspor) untuk tiap peran (Owner, Manager, Kasir, Kitchen, Waiter), disimpan di server (`role_perms`) sebagai titik awal tiap staf. Panel matriks permission sudah **dihapus dari tampilan** — Owner tidak perlu menata izin satu per satu.
-2. **Wewenang khusus per staf** — satu-satunya tempat Owner mengatur izin di UI: tombol **Wewenang** di setiap baris staf (bersama **Nonaktifkan** dan **Hapus**). Mencabut/mengembalikan modul hanya menyangkut staf itu, disimpan di tabel `user_perms` sebagai selisih terhadap preset role (Owner selalu penuh).
+1. **Preset dasar per role** — 22 modul × aksi (baca/tambah/ubah/hapus/setujui/ekspor) untuk tiap peran (Owner, Manager, Kasir, Kitchen, Waiter), disimpan di server (`role_perms`) sebagai titik awal tiap staf. Panel matriks permission sudah **dihapus dari tampilan** — Owner tidak perlu menata izin satu per satu.
+2. **Wewenang khusus per staf** — satu-satunya tempat Owner mengatur izin di UI: tombol **Wewenang** di setiap baris staf (bersama **Nonaktifkan** dan **Hapus**). Daftarnya memuat seluruh modul termasuk **Antar Ke Meja**, jadi akses pelayan bisa diberikan/dicabut per staf. Centang modal selalu mengikuti preset role (dipuat dari server saat modal dibuka). Mencabut/mengembalikan modul hanya menyangkut staf itu, disimpan di tabel `user_perms` sebagai selisih terhadap preset role (Owner selalu penuh).
 
 Setiap centang **divalidasi ulang oleh server**: modul harus terdaftar dan aksi harus termasuk daftar aksi resmi — selain itu permintaan ditolak `400`, bukan diam-diam dibuang. Mengubah satu staf juga **tidak pernah menyentuh baris staf lain**.
 
@@ -84,7 +84,7 @@ Yang terjadi begitu Owner menyimpan perubahan — **tanpa staf perlu login ulang
 - **Menu navigasi** modul yang dicabut langsung disembunyikan (termasuk label grupnya bila kosong).
 - **Tautan langsung** (`/#reservations`, `/#inventory`, …) tidak bisa dipakai menyiasati: halaman diganti layar **“Anda tidak punya izin”** yang menjelaskan modul, peran, dan jumlah wewenang aktif, plus tombol kembali ke Ringkasan. Tautan yang tidak dikenal menampilkan layar 404 terpisah.
 - **Data TIDAK PERNAH dihapus maupun dipotong.** Pencabutan wewenang hanya membatasi *akses*: seluruh data restoran tetap tersimpan utuh di server dan tetap ikut disinkron ke perangkat staf, jadi staf tidak “terputus” dari data Owner. Begitu wewenang dikembalikan, menu dan halaman langsung terbuka kembali tanpa kehilangan apa pun.
-- **Tulis ditolak server:** `PUT /api/data` untuk modul tanpa izin `update` dikembalikan sebagai `denied` — klien hanya mengirim key yang memang boleh ditulis, jadi tidak ada toast penolakan yang tidak perlu.
+- **Tulis ditolak server:** `PUT /api/data` untuk modul tanpa izin `update` dikembalikan sebagai `denied` — klien hanya mengirim key yang memang boleh ditulis, jadi tidak ada toast penolakan yang tidak perlu. Key pesanan ditulis bila staf berwewenang **Pesanan** *atau* **Antar Ke Meja** (keduanya izin alternatif untuk aksi antar).
 - **API lain ikut dikunci:** `GET /api/permissions`, `GET/POST/PUT/DELETE /api/staff` menolak staf tanpa izin (403).
 - **Dipantau terus:** klien membaca ulang izin dari `/api/auth/me` setiap 20 detik, saat jendela kembali aktif/fokus, dan saat menerima 403 — begitu izin berubah, menu dan layar izin menyesuaikan sendiri; perubahan juga muncul sebagai notifikasi “Owner mencabut wewenang … (data tetap tersimpan)”.
 
@@ -95,7 +95,7 @@ Izin yang sama tetap ditegakkan di backend (`server/permissions.js` + pemeriksaa
 Status pesanan kini berjalan: **Dibayar → Diproses → Siap → Tersaji** (tahap "sedang diantar" dihapus dari workspace **Antar Ke Meja** agar alur kerja lebih sederhana — data pesanan lama ber-status Diantar tetap aman dan bisa langsung ditandai Tersaji).
 
 1. Dapur menandai pesanan **Siap** di workspace **Dapur / KDS** — pesanan langsung muncul di workspace **Antar Ke Meja**.
-2. Pelayan menekan **Acc & antar ✓** (perlu izin ubah pesanan) — satu langkah, pesanan langsung berstatus **Tersaji**.
+2. Pelayan menekan **Acc & antar ✓** (perlu izin modul **Antar Ke Meja** atau **Pesanan**) — satu langkah, pesanan langsung berstatus **Tersaji**.
 
 Halaman **Antar Ke Meja** menampilkan dua kolom sederhana: *Siap diantar* dan *Selesai · tersaji*, plus statistik, status meja terisi (dihitung dari reservasi aktif), dan daftar reservasi berikutnya. Badge di sidebar menunjukkan jumlah yang menunggu Acc; Alert Center punya pintasan langsung ke workspace ini.
 
@@ -144,10 +144,10 @@ git push -u origin main                 :: GitHub Actions otomatis build & deplo
 
 Empat skrip pengujian dijalankan terhadap `wrangler dev --port 8790 --local` (D1 lokal):
 
-- `.uji-permisi.ps1` — 12 skenario API permission: cabut/kembalikan wewenang per staf (tanpa menyentuh staf lain), validasi ketat modul & aksi, data tetap utuh, tulis & API permission ditolak, preset per role berlaku langsung.
+- `.uji-permisi.ps1` — 13 skenario API permission: cabut/kembalikan wewenang per staf (tanpa menyentuh staf lain), validasi ketat modul & aksi, data tetap utuh, tulis & API permission ditolak, preset per role berlaku langsung, serta modul **Antar Ke Meja** (dipilih di Wewenang) sebagai izin alternatif menulis pesanan.
 - `.uji-frontend.ps1` — uji headless Chrome: DOM badge status jadwal, foto `object-fit: contain`, menu/halaman ditolak saat wewenang dicabut, notifikasi pencabutan langsung saat halaman terbuka (poll izin 20 detik), serta data tetap terkirim ke staf yang dicabut.
 - `.uji-kontras.ps1` — mengukur rasio kontras label tombol terhadap latarnya di 6 tema (66 pemeriksaan = 6 tema x 11 jenis tombol, ambang WCAG AA 4.5:1) sekaligus memastikan tulisan tombol selalu berlawanan dengan warna latarnya.
-- `.uji-staf.ps1` — uji headless Chrome dengan sesi login sungguhan: panel Staf &amp; role tampil lengkap (Nonaktifkan, Wewenang, Hapus, Tambah staf) dan warna keempat tombol staf diukur di 6 tema (24 pemeriksaan, ambang 4.5:1).
+- `.uji-staf.ps1` — uji headless Chrome dengan sesi login sungguhan: panel Staf &amp; role tampil lengkap (Nonaktifkan, Wewenang, Hapus, Tambah staf), warna keempat tombol staf diukur di 6 tema (24 pemeriksaan, ambang 4.5:1), serta modal **Wewenang** benar-benar terbuka dan memuat centang **Antar Ke Meja** sesuai preset role.
 
 Folder aset yang disajikan `wrangler dev` bisa dioverride lewat variabel lingkungan `RASA_ASSETS` (default: `%TEMP%\rasa-assets`).
 

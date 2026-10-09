@@ -232,11 +232,14 @@ window.RasaSync = (function () {
     const local = localPayload();
     /* Hanya key yang boleh ditulis role ini yang dikirim — menghindari
        penolakan server yang tidak perlu (toast "ditolak" tiap sinkron).
-       Server tetap memeriksa ulang untuk setiap key. */
+       Server tetap memeriksa ulang untuk setiap key. Modul 'antar' (Antar
+       Ke Meja) ikut menulis key pesanan, jadi ikut diperbolehkan di sini. */
     const changed = diffKeys(snap.payload, local).filter(k => {
       if (!window.RasaKeyModule || !window.canPerm) return true;
       const m = window.RasaKeyModule(k);
-      return m === 'misc' || window.canPerm(m, 'update');
+      if (m === 'misc') return true;
+      if (window.canPerm(m, 'update')) return true;
+      return m === 'orders' && window.canPerm('antar', 'update');
     });
     if (!changed.length) return;
 

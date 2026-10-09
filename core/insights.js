@@ -14,6 +14,7 @@ window.RasaInsights = (function () {
 
   const PAGE_OF_MODULE = {
     inventory: 'inventory', menu: 'menu', orders: 'orders', kitchen: 'kitchen',
+    antar: 'pelayan',
     reservations: 'reservations', staff: 'settings', settings: 'settings',
     finance: 'finance', accounting: 'finance', procurement: 'procurement',
     reports: 'reports', recipes: 'recipes', alerts: 'alerts', audit: 'audit',
@@ -77,14 +78,14 @@ window.RasaInsights = (function () {
     });
     const ready = (typeof orders !== 'undefined' ? orders : []).filter(o => o.cls === 'ready');
     if (ready.length) out.push({
-      id: 'serve-' + ready.length, level: 'info', module: 'orders', page: 'pelayan',
+      id: 'serve-' + ready.length, level: 'info', module: 'antar', page: 'pelayan',
       title: ready.length + ' pesanan siap diantar',
       detail: 'Menunggu Acc pelayan untuk diantar ke meja tamu — buka workspace Antar Ke Meja.',
       actionLabel: 'Buka Antar Ke Meja'
     });
     const onWay = (typeof orders !== 'undefined' ? orders : []).filter(o => o.cls === 'delivering');
     if (onWay.length) out.push({
-      id: 'deliver-' + onWay.length, level: 'info', module: 'orders', page: 'pelayan',
+      id: 'deliver-' + onWay.length, level: 'info', module: 'antar', page: 'pelayan',
       title: onWay.length + ' pesanan sedang diantar',
       detail: 'Pelayan sedang membawa pesanan ke meja — tandai "Sampai di meja" setelah tersaji.',
       actionLabel: 'Buka Antar Ke Meja'
