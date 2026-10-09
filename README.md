@@ -6,6 +6,7 @@ Prototipe antarmuka web untuk blueprint Enterprise Restaurant Management System.
 
 - **Lokal:** buka `Buka RASA.bat` (menjalankan server di `http://127.0.0.1:8787`), atau buka `index.html` langsung di browser.
 - **Online (Cloudflare Workers):** https://rasa-restaurant-os.rasa-os.workers.dev
+- **Online (GitHub Pages):** https://radityarsw-glitch.github.io/rasa-restaurant-os/ — frontend yang sama, backend tetap Worker di atas.
 
 ## Mulai dari nol
 
@@ -120,7 +121,7 @@ Konfigurasi ada di `wrangler.jsonc`; file `.bat`, `README.md`, `*.ps1`, dan `wra
 
 ## Deploy ke GitHub Pages (github.io)
 
-Frontend juga bisa dipublikasikan lewat GitHub Pages tanpa menyentuh backend. Yang di-push ke GitHub cukup isi folder ini, lalu GitHub Actions (`.github/workflows/pages.yml`) mem-build dan men-deploy **hanya** `index.html`, `app.js`, `style.css`, dan `core/*` ke `https://<username>.github.io/rasa-restaurant-os/`.
+Frontend juga bisa dipublikasikan lewat GitHub Pages tanpa menyentuh backend. Yang di-push ke GitHub cukup isi folder ini, lalu GitHub Actions (`.github/workflows/pages.yml`) mem-build dan men-deploy **hanya** `index.html`, `app.js`, `style.css`, dan `core/*` ke https://radityarsw-glitch.github.io/rasa-restaurant-os/ (repo: https://github.com/radityarsw-glitch/rasa-restaurant-os).
 
 - **Backend tetap di Cloudflare.** Login OTP, sinkronisasi per email, permission, dan D1 tetap dilayani Worker `https://rasa-restaurant-os.rasa-os.workers.dev` — Worker sudah mengirim `access-control-allow-origin: *` plus preflight `OPTIONS`, jadi pemanggilan lintas-origin dari github.io diterima.
 - **Penunjuk API otomatis.** `core/api.js` menghitung `window.RasaAPIBase`: di `localhost` / `*.workers.dev` / `*.pages.dev` / `file://` tetap same-origin (relatif), di domain lain (termasuk `*.github.io`) diarahkan ke Worker. Untuk menimpa, tetapkan `window.RASA_API_BASE = 'https://…'` **sebelum** `core/api.js` dimuat.
@@ -128,13 +129,12 @@ Frontend juga bisa dipublikasikan lewat GitHub Pages tanpa menyentuh backend. Ya
 
 ```bat
 :: sekali saja di mesin ini
-git init -b main
-git remote add origin https://github.com/<username>/rasa-restaurant-os.git
+git remote add origin https://github.com/radityarsw-glitch/rasa-restaurant-os.git   :: sudah dilakukan
 
 :: setelah tiap perubahan
 git add .
 git commit -m "perubahan"
-git push -u origin main
+git push -u origin main                 :: GitHub Actions otomatis build & deploy
 ```
 
 ### Pengujian otomatis
