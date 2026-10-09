@@ -213,7 +213,7 @@ function dashboard(){
   const sales=salesTotal();      /* termasuk arsip — tidak hilang saat workspace dikosongkan */
   const live=liveOrders();
   const g=channelStats();
-  const resCount=(store.reservations||[]).length;   /* bisa hilang saat wewenang dicabut (purge lokal) */
+  const resCount=(store.reservations||[]).length;   /* ikut tersinkron penuh; wewenang dicabut = akses ditutup, data tidak dihapus */
   const used=usedTables();
   const pct=Math.round(used/TABLE_COUNT*100);
   return `${heading(greeting(),'Berikut ringkasan operasional restoran Anda hari ini — ikut berubah mengikuti data pesanan, menu, dan reservasi. Semua perubahan tersimpan otomatis.','<button class="btn" data-action="refresh-dash"><span class="btn-icon">↻</span> Segarkan</button><button class="btn btn-danger" data-action="reset-data"><span class="btn-icon">↺</span> Reset Data</button>')}
@@ -2668,7 +2668,6 @@ const ACTION_PERM={
   'recipe-add':['recipes','create'],'recipe-edit:':['recipes','update'],'recipe-save':['recipes','update'],'recipe-remove:':['recipes','delete'],
   'journal-add':['accounting','create'],'journal-save':['accounting','create'],'journal-line-add':['accounting','create'],'export-journal':['accounting','export'],
   'staff-add':['staff','create'],'staff-form-toggle':['staff','create'],'staff-toggle:':['staff','update'],'staff-del:':['staff','delete'],'staff-del-confirm:':['staff','delete'],'staff-perms:':['permissions','update'],
-  'perm-save':['permissions','update'],
   'reset-data':['settings','delete']
 };
 function actionAllowed(action){
@@ -2783,8 +2782,8 @@ document.addEventListener('click',e=>{
   if(action==='export-journal'){exportJournal();return}
   if(action==='account-logout'){window.RasaAuth.logout();return}
   /* ekstensi: modul baru mendaftarkan handler lewat window.RASA.actions.
-     Kunci boleh memakai nama penuh ("perm-tab:kasir") atau nama dasar
-     ("perm-tab") — handler dipanggil dengan argumen setelah tanda titik dua. */
+     Kunci boleh memakai nama penuh ("staff-perms:usr_123") atau nama dasar
+     ("staff-perms") — handler dipanggil dengan argumen setelah tanda titik dua. */
   const R=window.RASA;
   const extHandler=(R&&R.actions&&(R.actions[action]||R.actions[action.split(':')[0]]))||null;
   if(extHandler){extHandler(arg,el);return}

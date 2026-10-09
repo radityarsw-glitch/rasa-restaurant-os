@@ -128,26 +128,29 @@ html[data-theme="coral"]{
   --danger-grad:linear-gradient(140deg,#8f2f3f,#6d1f2c);
   --on-accent:#fff4f1;
 }
-/* ---- 6. Midnight Neon (gelap) ---- */
+/* ---- 6. Midnight Neon (gelap) — warna terang agar mudah dibaca ----
+   Latar tetap gelap, tetapi TINT, TEKS, BORDER, dan AKSEN dinaikkan
+   ke varian terang: kontras teks utama, caption, label tombol, badge,
+   placeholder, dan sisi sidebar semuanya naik di atas 4.5 : 1. */
 html[data-theme="midnight"]{
-  --canvas:#141a23;--white:#1d2530;--panel-2:#1a222c;--line:#2c3644;--hairline:#333f50;--line-hover:#465568;
-  --ink:#e9eef6;--ink-soft:#c9d4e2;--muted:#8d9aad;--muted-2:#a3b0c2;
-  --gold:#3ec7dc;--gold-deep:#25a5bd;--gold-soft:#9fe7f2;--gold-light:#7fdcec;--gold-tint:#16323a;
-  --gold-rgb:62,199,220;--gold-deep-rgb:37,165,189;
-  --green:#25a5bd;--green-dark:#1d8ba1;--mint:#16323a;--cream:#1a222c;--sand:#222c39;
-  --espresso:#0d1117;--sidebar:#0b0f15;
-  --red:#e07a63;--red-dark:#ef9b86;   /* kontras aman di atas latar gelap */
-  --orange:#e0a35c;--blue:#8fb4ee;
+  --canvas:#161d27;--white:#222c3b;--panel-2:#1f2835;--line:#3d4b60;--hairline:#4b5b73;--line-hover:#61738d;
+  --ink:#f4f8fd;--ink-soft:#dde6f3;--muted:#a9b8cc;--muted-2:#b8c5d6;
+  --gold:#54dcef;--gold-deep:#2fbdd6;--gold-soft:#b3f0fa;--gold-light:#8ce7f7;--gold-tint:#173942;
+  --gold-rgb:84,220,239;--gold-deep-rgb:47,189,214;
+  --green:#2fbdd6;--green-dark:#2399ae;--mint:#173942;--cream:#1f2835;--sand:#27313f;
+  --espresso:#0f141b;--sidebar:#0d1219;
+  --red:#ff917a;--red-dark:#ffab98;   /* kontras aman di atas latar gelap */
+  --orange:#f6bb70;--blue:#a9c8ff;
   /* puncak gradien panel harus gelap — kalau tetap #fffefc, judul/angka
      berwarna terang jadi putih di atas putih dan tak terbaca */
-  --surface-hi:#263141;
-  --sidebar-grad:linear-gradient(175deg,#121822 0%,#0d1219 55%,#090d12 100%);
-  --cart-grad:linear-gradient(140deg,#151d28,#0d1117);
-  --sidebar-title:#e6edf7;--sidebar-text:#9fadbf;--sidebar-dim:#66748a;--sidebar-accent:#5fe0f0;
-  --accent-grad:linear-gradient(140deg,#7fdcec 0%,#42c6db 45%,#25a5bd 100%);
-  --accent-grad-hover:linear-gradient(140deg,#98e6f2 0%,#55cfe2 45%,#2fb4cb 100%);
-  --accent-grad-2:linear-gradient(140deg,#7fdcec,#3ec7dc);
-  --danger-grad:linear-gradient(140deg,#ab4b37,#973a29);
+  --surface-hi:#2b3648;
+  --sidebar-grad:linear-gradient(175deg,#141b26 0%,#10161f 55%,#0b0f16 100%);
+  --cart-grad:linear-gradient(140deg,#182130,#0f141b);
+  --sidebar-title:#f4f9ff;--sidebar-text:#c3d1e3;--sidebar-dim:#94a7be;--sidebar-accent:#8ef4ff;
+  --accent-grad:linear-gradient(140deg,#8ce7f7 0%,#4bcfE2 45%,#2fbdd6 100%);
+  --accent-grad-hover:linear-gradient(140deg,#a5f0ff 0%,#5cdcef 45%,#33bcd4 100%);
+  --accent-grad-2:linear-gradient(140deg,#8ce7f7,#4bcfe2);
+  --danger-grad:linear-gradient(140deg,#b95642,#a3402d);
   --on-accent:#04161b;
   --shadow:0 1px 2px rgba(0,0,0,.35), 0 10px 26px -16px rgba(0,0,0,.75);
 }
@@ -1522,24 +1525,41 @@ html.gate-open,html.gate-open body{overflow:hidden}
 .danger-link{color:var(--red)!important}
 .hint-inline{font-size:11px;color:var(--muted);font-weight:700}
 
-.perm-tabs{display:flex;gap:6px;flex-wrap:wrap}
-.perm-tab{border:1px solid var(--line);background:var(--white);color:var(--ink-soft);border-radius:999px;
-  padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;transition:.16s ease}
-.perm-tab:hover{border-color:var(--line-hover);background:var(--mint)}
-.perm-tab.selected{background:var(--green);border-color:var(--green-dark);color:#fff}
-
-.perm-table th,.perm-table td{padding:7px 8px}
-.perm-table th:not(:first-child),.perm-table td:not(:first-child){text-align:center}
-.perm-table tbody tr:hover{background:var(--panel-2)}
-.perm-cell{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;cursor:pointer}
-.perm-cell input{width:15px;height:15px;accent-color:var(--green-dark);cursor:pointer}
-.perm-cell.locked{cursor:not-allowed;opacity:.75}
-.perm-cell.locked input{cursor:not-allowed}
+/* --- Tombol aksi staf: Nonaktifkan · Wewenang · Hapus --- */
+.staff-actions{display:inline-flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
+.staff-act{
+  display:inline-flex;align-items:center;gap:5px;
+  min-height:29px;padding:5px 11px;border-radius:9px;
+  border:1px solid var(--line);background:var(--white);
+  font:700 10px/1 'Plus Jakarta Sans',sans-serif;letter-spacing:.2px;
+  color:var(--ink-soft);cursor:pointer;transition:.16s ease;white-space:nowrap}
+.staff-act i{font-style:normal;font-size:11px;line-height:1;opacity:.9}
+.staff-act:hover{transform:translateY(-1px);box-shadow:0 8px 16px -12px rgba(43,30,18,.85)}
+.staff-act:active{transform:translateY(0)}
+/* Nonaktifkan / Aktifkan — netral lalu hijau saat staf sedang nonaktif */
+.staff-act.is-off{
+  border-color:rgba(var(--gold-rgb),.45);background:var(--gold-tint);color:var(--green-dark)}
+.staff-act.is-off:hover{border-color:var(--gold);background:var(--gold-tint);color:var(--green-dark)}
+.staff-act.is-on{
+  border-color:rgba(46,129,87,.5);background:#e9f7ef;color:#1f6b45}
+.staff-act.is-on:hover{border-color:#2e8157;background:#e9f7ef;color:#1a5c3b}
+/* Wewenang — aksen utama (paling menonjol, karena ini akses utama Owner) */
+.staff-act.is-perms{
+  border-color:var(--gold-deep);background:var(--accent-grad);color:var(--on-accent);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.5), 0 8px 16px -13px rgba(var(--gold-deep-rgb),1)}
+.staff-act.is-perms:hover{background:var(--accent-grad-hover);color:var(--on-accent);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.6), 0 12px 20px -14px rgba(var(--gold-deep-rgb),1)}
+/* Hapus — merah */
+.staff-act.is-del{
+  border-color:rgba(176,71,58,.5);background:#fdf0ed;color:#a9432e}
+.staff-act.is-del:hover{border-color:#b0473a;background:#fbe7e2;color:#8f3524}
+@media(max-width:760px){
+  .staff-actions{gap:7px}
+  .staff-act{min-height:38px;padding:8px 12px;font-size:11px}
+}
 
 @media(max-width:760px){
   .staff-form{grid-template-columns:1fr}
-  .perm-tabs{width:100%;overflow-x:auto;flex-wrap:nowrap;padding-bottom:2px}
-  .perm-table{min-width:560px}
   .input-sm{width:104px}
 }
 
@@ -1709,7 +1729,7 @@ html[data-theme="midnight"] .breadcrumb b{color:var(--ink)}
 html[data-theme="midnight"] .open-status{color:var(--muted)}
 html[data-theme="midnight"] .open-status .os-name{color:var(--ink)}
 html[data-theme="midnight"] .open-status .os-sep{color:var(--muted-2)}
-html[data-theme="midnight"] .open-status .os-state{color:#68d68f}
+html[data-theme="midnight"] .open-status .os-state{color:#8bf3b3}
 html[data-theme="midnight"] .open-status.is-closed{border-color:rgba(224,122,99,.42);background:rgba(224,122,99,.1)}
 html[data-theme="midnight"] .open-status.is-closed .os-state{color:#ef9b86}
 html[data-theme="midnight"] .open-status.is-closed .os-name{color:var(--ink-soft)}
@@ -1717,7 +1737,7 @@ html[data-theme="midnight"] .stat-card{background:linear-gradient(180deg,var(--w
 html[data-theme="midnight"] .stat-top{color:var(--muted)}
 html[data-theme="midnight"] .stat-icon{background:linear-gradient(140deg,rgba(var(--gold-rgb),.24),rgba(var(--gold-rgb),.1));
   border-color:rgba(var(--gold-rgb),.38);color:var(--gold-soft)}
-html[data-theme="midnight"] .trend{color:#68d68f}
+html[data-theme="midnight"] .trend{color:#8bf3b3}
 html[data-theme="midnight"] .trend.warn{color:#e5b45f}
 html[data-theme="midnight"] .panel-title{color:var(--ink)}
 html[data-theme="midnight"] .link-btn:hover{color:var(--gold)}
@@ -1732,11 +1752,11 @@ html[data-theme="midnight"] th{background:linear-gradient(180deg,#212a36,#1c2530
 html[data-theme="midnight"] td{border-top-color:var(--line)}
 html[data-theme="midnight"] td:first-child{color:var(--ink)}
 html[data-theme="midnight"] tbody tr:hover{background:#212a36}
-html[data-theme="midnight"] .status.preparing{background:rgba(229,180,95,.14);color:#e9c275;border-color:rgba(229,180,95,.35)}
+html[data-theme="midnight"] .status.preparing{background:rgba(229,180,95,.14);color:#f7d795;border-color:rgba(229,180,95,.35)}
 html[data-theme="midnight"] .status.ready{background:rgba(104,214,143,.13);color:#7fdda5;border-color:rgba(104,214,143,.32)}
-html[data-theme="midnight"] .status.paid{background:rgba(126,160,235,.14);color:#9db7f5;border-color:rgba(126,160,235,.32)}
+html[data-theme="midnight"] .status.paid{background:rgba(126,160,235,.14);color:#bccfff;border-color:rgba(126,160,235,.32)}
 html[data-theme="midnight"] .status.pending{background:rgba(224,122,99,.14);color:#ef9b86;border-color:rgba(224,122,99,.34)}
-html[data-theme="midnight"] .status.cancelled{background:rgba(160,170,185,.12);color:#9aa7b8;border-color:rgba(160,170,185,.3)}
+html[data-theme="midnight"] .status.cancelled{background:rgba(160,170,185,.12);color:#c2ccdb;border-color:rgba(160,170,185,.3)}
 html[data-theme="midnight"] .status.scheduled{background:rgba(178,142,255,.15);color:#c3a9ff;border-color:rgba(178,142,255,.34)}
 html[data-theme="midnight"] .ticket-res{border-color:rgba(178,142,255,.4);background:#1b1f2e}
 html[data-theme="midnight"] .ticket-res .ticket-top span:last-child{color:#c3a9ff}
@@ -1765,7 +1785,7 @@ html[data-theme="midnight"] .pv-total{background:#212a36;border-color:var(--line
 html[data-theme="midnight"] .pv-row.on{background:rgba(var(--gold-rgb),.12);border-color:var(--gold)}
 html[data-theme="midnight"] .avatar-up{background:#1a222c;border-color:rgba(var(--gold-rgb),.5);color:var(--gold-soft)}
 html[data-theme="midnight"] .money-card{border-color:rgba(var(--gold-rgb),.3)}
-html[data-theme="midnight"] .input::placeholder{color:#6f7d90}
+html[data-theme="midnight"] .input::placeholder{color:#93a3b8}
 html[data-theme="midnight"] .input:focus{background:var(--white)}
 html[data-theme="midnight"] .hint b{color:var(--gold)}
 html[data-theme="midnight"] .btn-ghost:hover{border-color:rgba(224,122,99,.55);color:#ef9b86}
@@ -1835,7 +1855,10 @@ html[data-theme="midnight"] .link-row .btn{background:var(--white)}
 html[data-theme="midnight"] .quick-row .btn{background:var(--white)}
 html[data-theme="midnight"] .theme-card{background:var(--white)}
 html[data-theme="midnight"] .theme-card.selected{border-color:var(--gold);background:var(--gold-tint)}
-html[data-theme="midnight"] .perm-tab.selected{color:var(--on-accent)}
+html[data-theme="midnight"] .staff-act{background:var(--white);color:var(--ink)!important;border-color:rgba(255,255,255,.22)}
+html[data-theme="midnight"] .staff-act.is-on{background:rgba(104,214,143,.16);border-color:rgba(104,214,143,.5);color:#9dfcc4!important}
+html[data-theme="midnight"] .staff-act.is-del{background:rgba(224,122,99,.16);border-color:rgba(224,122,99,.5);color:#ffb9a6!important}
+html[data-theme="midnight"] .staff-act.is-perms{background:var(--accent-grad);border-color:var(--gold);color:var(--on-accent)!important}
 html[data-theme="midnight"] .gs-item:hover,html[data-theme="midnight"] .gs-item:focus-visible{background:var(--gold-tint)}
 
 /* ============================================================
@@ -2238,7 +2261,7 @@ h1{background:none;color:var(--ink)}
 /* ---- tema gelap: jaga kontras komponen baru ---- */
 html[data-theme="midnight"] .res-count.far{background:rgba(62,199,220,.14);color:#9fe7f2;border-color:rgba(62,199,220,.42);box-shadow:none}
 html[data-theme="midnight"] .res-count.soon{background:rgba(224,163,92,.16);color:#e0a35c;border-color:rgba(224,163,92,.45);box-shadow:0 0 0 3px rgba(224,163,92,.12)}
-html[data-theme="midnight"] .res-count.past{background:#212a36;border-color:var(--line);color:#8d9aad}
+html[data-theme="midnight"] .res-count.past{background:#212a36;border-color:var(--line);color:var(--muted)}
 html[data-theme="midnight"] .res-next{background:linear-gradient(120deg,rgba(62,199,220,.16),transparent 60%),var(--white)}
 html[data-theme="midnight"] .res-next-icon{background:rgba(62,199,220,.16);border-color:rgba(62,199,220,.4);color:#9fe7f2;box-shadow:none}
 html[data-theme="midnight"] .res-next-time{background:var(--white);border-color:rgba(62,199,220,.45);color:#9fe7f2;box-shadow:none}
@@ -2326,7 +2349,7 @@ html[data-theme="midnight"] .legend{color:#a9b6c8}
 /* ---- Status pengantaran (workspace Pelayan) ---- */
 .status.delivering{background:linear-gradient(140deg,#eaf1fb,#dfe9f8);color:#3f6596;border:1px solid #d2dff2}
 .status.served{background:linear-gradient(140deg,#eef7ee,#e2f2e6);color:#3d6f48;border:1px solid #d5e9da}
-html[data-theme="midnight"] .status.delivering{background:rgba(126,160,235,.16);color:#9db7f5;border-color:rgba(126,160,235,.36)}
+html[data-theme="midnight"] .status.delivering{background:rgba(126,160,235,.16);color:#bccfff;border-color:rgba(126,160,235,.36)}
 html[data-theme="midnight"] .status.served{background:rgba(104,214,143,.13);color:#7fdda5;border-color:rgba(104,214,143,.32)}
 
 /* ============================================================
@@ -2650,3 +2673,91 @@ html[data-theme="midnight"] .denied-icon{color:#ef9b86;background:rgba(224,122,9
   .uperm-list{grid-template-columns:1fr}
   .denied-meta{grid-template-columns:1fr}
 }
+
+/* ============================================================
+   24. WARNA TOMBOL LEBIH TERANG (semua color grading)
+   Blok paling akhir: menimpa aturan tombol sebelumnya tanpa
+   mengubah tata letak. Tujuannya satu — LABEL TOMBOL MUDAH
+   DIBACA di setiap tema:
+   - gradien tombol utama memakai varian terang yang tetap memenuhi
+     kontras 4.5 : 1 terhadap warna teks masing-masing tema
+     (tema dengan teks terang sengaja tidak dibuat lebih terang lagi,
+     agar teks putih tidak kehilangan kontras),
+   - tombol sekunder & jimat memakai tinta penuh + border lebih tegas,
+   - tombol berbahaya memakai gradien terang + teks putih murni,
+   - Midnight Neon: permukaan tombol dan labelnya dinaikkan ke
+     varian terang agar menonjol di atas latar gelap.
+   ============================================================ */
+
+/* ---- 24.1 gradien tombol utama: varian terang per tema ---- */
+:root{
+  --accent-grad-bright:linear-gradient(140deg,#eccb8a 0%,#d7b161 45%,#b8862f 100%);
+  --danger-grad-bright:linear-gradient(140deg,#bd5540,#a34230);
+}
+html[data-theme="forest"]{--accent-grad-bright:linear-gradient(140deg,#9ee0c2 0%,#55bd8b 45%,#3d9c74 100%)}
+html[data-theme="ocean"]{--accent-grad-bright:linear-gradient(140deg,#2b72d2 0%,#2262bc 45%,#1a4f9e 100%)}
+html[data-theme="plum"]{--accent-grad-bright:linear-gradient(140deg,#f3c1d1 0%,#df8fae 45%,#c26c8b 100%)}
+html[data-theme="coral"]{
+  --accent-grad-bright:linear-gradient(140deg,#c93a24 0%,#a62c1a 45%,#8c2718 100%);
+  --danger-grad-bright:linear-gradient(140deg,#b8455a,#8f2f42);
+}
+html[data-theme="midnight"]{
+  --accent-grad-bright:linear-gradient(140deg,#a5f0ff 0%,#5cdcef 45%,#33bcd4 100%);
+  --danger-grad-bright:linear-gradient(140deg,#b95642,#a3402d);
+}
+
+/* ---- 24.2 tombol utama / tambah / wewenang staf ---- */
+.btn-primary,
+.btn-add,
+.staff-act.is-perms{
+  background-image:var(--gloss),var(--accent-grad-bright)}
+.btn-primary:hover,
+.btn-add:hover,
+.staff-act.is-perms:hover{
+  background-image:var(--gloss),var(--accent-grad-bright);
+  filter:saturate(1.15) brightness(1.02)}
+.btn-primary:active,
+.btn-add:active{filter:saturate(1.1) brightness(.99)}
+.btn-add{background-image:var(--gloss),var(--accent-grad-bright)}
+
+/* ---- 24.3 tombol sekunder: label tinta penuh, border tegas ---- */
+.btn{
+  border-color:var(--line-hover);
+  color:var(--ink)}
+.btn:hover{border-color:var(--gold);color:var(--gold-deep)}
+.btn-ghost{border-color:var(--line-hover);color:var(--ink)}
+.btn-mini{border-color:var(--line-hover);color:var(--ink)}
+
+/* ---- 24.4 tombol berbahaya: lebih terang + teks putih murni ---- */
+.btn-danger,
+.btn-danger:hover{
+  background-color:transparent;
+  background-image:var(--danger-grad-bright);
+  border-color:#c9614b;
+  color:#ffffff}
+.btn-danger:hover{filter:saturate(1.12) brightness(1.02);border-color:#e0705a}
+
+/* ---- 24.5 tautan aksi: warna dalam, kontras tinggi di latar terang ---- */
+.link-btn{color:var(--green-dark)}
+.link-btn:hover{color:var(--green-dark);filter:brightness(.88)}
+
+/* ---- 24.6 Midnight Neon: permukaan tombol & label versi terang ---- */
+html[data-theme="midnight"] .btn{
+  background-color:var(--white);
+  background-image:linear-gradient(180deg,rgba(255,255,255,.13),rgba(255,255,255,.03));
+  border-color:#5b6d87;
+  color:#f2f7ff}
+html[data-theme="midnight"] .btn:hover{border-color:#6ee6f8;color:#9df2ff}
+html[data-theme="midnight"] .btn-ghost{border-color:#5b6d87;color:#f2f7ff}
+html[data-theme="midnight"] .btn-mini{background-color:var(--white);color:#f2f7ff;border-color:#5b6d87}
+html[data-theme="midnight"] .btn-add{
+  background-color:transparent;
+  background-image:var(--gloss),var(--accent-grad-bright);
+  border-color:var(--gold-deep);color:var(--on-accent)}
+html[data-theme="midnight"] .btn-danger,
+html[data-theme="midnight"] .btn-danger:hover{
+  background-color:transparent;
+  background-image:var(--danger-grad-bright);
+  border-color:#e0705a;color:#ffffff}
+html[data-theme="midnight"] .link-btn{color:#7fe9fb}
+html[data-theme="midnight"] .link-btn:hover{color:#9df2ff;filter:none}

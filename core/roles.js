@@ -2,8 +2,10 @@
    RASA Restaurant OS — role experience (Blok C)
    - Dashboard khusus per role (owner/manager/kasir/kitchen/waiter)
    - Saring navigasi & jaga halaman sesuai permission
-   - Panel Staf + matriks permission di Pengaturan
-   Semua keputusan izin tetap divalidasi backend; file ini hanya
+   - Panel Staf (tombol Nonaktifkan / Wewenang / Hapus) di Pengaturan
+   Matriks permission per role TIDAK lagi ditampilkan; izin dasar diambil
+   dari preset role di server, lalu disesuaikan per staf lewat tombol
+   Wewenang. Semua keputusan izin tetap divalidasi backend; file ini hanya
    menyesuaikan pengalaman pengguna agar sesuai role.
    ============================================================ */
 
@@ -28,13 +30,10 @@ window.RasaRoles = (function () {
     ['reports', 'Laporan'], ['analytics', 'Analytics'], ['alerts', 'Alert Center'],
     ['audit', 'Audit log'], ['settings', 'Pengaturan'], ['permissions', 'Permission']
   ];
-  const ACTIONS = ['read', 'create', 'update', 'delete', 'approve', 'export'];
-  const ACTION_LABELS = { read: 'Baca', create: 'Tambah', update: 'Ubah', delete: 'Hapus', approve: 'Setujui', export: 'Ekspor' };
-  const ROLE_TABS = ['manager', 'kasir', 'kitchen', 'waiter'];
   const ROLE_LABELS = { owner: 'Owner', manager: 'Manager', kasir: 'Kasir', kitchen: 'Kitchen', waiter: 'Waiter' };
 
   const state = {
-    staff: null, matrix: null, permRole: 'manager', staffLoading: false, permLoading: false, formOpen: false,
+    staff: null, matrix: null, staffLoading: false, permLoading: false, formOpen: false,
     userPerms: null,          /* { userId: { modul: [aksi] } } wewenang khusus staf */
     deniedFor: '',            /* halaman terakhir yang ditolak (bukan halaman biasa) */
     requested: 'overview',    /* halaman terakhir yang diminta pengguna */
@@ -58,7 +57,10 @@ window.RasaRoles = (function () {
     Object.assign(names, (window.RASA && window.RASA.pageNames) || {});
     return names[page] || (KNOWN[page] ? page : '');
   };
-  /* Modul -> key data lokal yang harus dibersihkan saat wewenang dicabut */
+  /* Modul -> key data lokal. Dipakai untuk memetakan key ke modul saat push
+     (server tetap penentu akhir) dan untuk menandai modul yang wewenangnya
+     dicabut — TIDAK untuk menghapus data: data tetap utuh di perangkat maupun
+     di server, yang dicabut hanya aksesnya. */
   const MODULE_KEYS = {
     pos: ['cart'], orders: ['orders', 'archive'], kitchen: ['kitchen'], tables: ['tables'],
     reservations: ['reservations'], menu: ['products'], inventory: ['inventory', 'stockLog'],
@@ -76,22 +78,6 @@ window.RasaRoles = (function () {
   Object.keys(MODULE_KEYS).forEach(m => MODULE_KEYS[m].forEach(k => { KEY_MODULE[k] = m }));
   window.RasaKeyModule = k => KEY_MODULE[k] || 'misc';
   const readableModulesOf = perms => Object.keys(perms || {}).filter(m => Array.isArray(perms[m]) && perms[m].indexOf('read') >= 0);
-
-  /* Hapus data lokal milik modul yang wewenangnya dicabut, supaya staf
-     tidak lagi melihat salinan lama di perangkatnya. */
-  function purgeModules(modules) {
-    const keys = [];
-    modules.forEach(m => { (MODULE_KEYS[m] || []).forEach(k => { if (keys.indexOf(k) < 0) keys.push(k) }) });
-    if (!keys.length) return false;
-    const S = window.RasaSession;
-    void S;
-    if (window.RasaSync && typeof window.RasaSync.dropKeys === 'function') return window.RasaSync.dropKeys(keys);
-    try {
-      keys.forEach(k => { if (k in store) delete store[k] });
-      saveStore();
-    } catch (e) { console.log('purge-failed', String(e && e.message)) }
-    return true;
-  }
 
   /* ---------- 1. Saring navigasi ---------- */
   function applyNav() {
@@ -237,12 +223,12 @@ window.RasaRoles = (function () {
     return `
     <div class="panel span-2" id="staffPanel">
       <div class="panel-head"><div><div class="panel-title">Staf &amp; role</div>
-      <div class="panel-caption">Akun yang boleh masuk ke restoran ini · divalidasi server</div></div>
+      <div class="panel-caption">Akun yang boleh masuk ke restoran ini · kelola lewat tombol <b>Nonaktifkan</b>, <b>Wewenang</b>, dan <b>Hapus</b> — setiap perubahan divalidasi server</div></div>
       ${canCreate ? '<button class="btn btn-primary" data-action="staff-form-toggle">＋ Tambah staf</button>' : ''}</div>
       ${form}
       <div class="table-wrap"><table class="staff-table"><thead><tr><th>Nama</th><th>Email</th><th>Role</th><th>Status</th><th>Login terakhir</th><th style="text-align:right">Aksi</th></tr></thead>
       <tbody id="staffBody"><tr><td colspan="6" class="empty-state">Memuat daftar staf…</td></tr></tbody></table></div>
-      <div class="hint">Setiap perubahan role/status tercatat di <b>audit log</b> dan langsung mengubah permission saat staf masuk berikutnya.</div>
+      <div class="hint">Mencabut wewenang <b>tidak menghapus data</b> — restoran tetap tersinkron, staf hanya kehilangan akses ke modul tersebut. Setiap perubahan tercatat di <b>audit log</b> dan langsung berlaku tanpa staf perlu masuk ulang.</div>
     </div>`;
   }
 
@@ -278,13 +264,16 @@ window.RasaRoles = (function () {
         ? '<span class="status ready">Aktif</span>'
         : '<span class="status pending">Dinonaktifkan</span>';
       const actions = [];
-      if (canUpdate && !mine) actions.push(`<button class="link-btn" data-action="staff-toggle:${u.id}">${u.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'}</button>`);
-      if (canPermEdit && !mine && u.role !== 'owner') actions.push(`<button class="link-btn" data-action="staff-perms:${u.id}" title="Cabut atau berikan wewenang staf ini">Wewenang</button>`);
-      if (canDelete && !mine) actions.push(`<button class="link-btn danger-link" data-action="staff-del:${u.id}">Hapus</button>`);
+      if (canUpdate && !mine) actions.push(
+        `<button class="staff-act${u.status === 'active' ? ' is-off' : ' is-on'}" data-action="staff-toggle:${u.id}" title="${u.status === 'active' ? 'Nonaktifkan akun ini' : 'Aktifkan kembali akun ini'}"><i>⏻</i>${u.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'}</button>`);
+      if (canPermEdit && !mine && u.role !== 'owner') actions.push(
+        `<button class="staff-act is-perms" data-action="staff-perms:${u.id}" title="Cabut atau berikan wewenang staf ini"><i>⛨</i>Wewenang</button>`);
+      if (canDelete && !mine) actions.push(
+        `<button class="staff-act is-del" data-action="staff-del:${u.id}" title="Hapus staf ini selamanya"><i>✕</i>Hapus</button>`);
       if (mine) actions.push('<span class="hint-inline">Anda</span>');
       return `<tr${u.status !== 'active' ? ' class="row-dim"' : ''}><td><b>${esc(u.name || '—')}</b></td><td>${esc(u.email || '')}</td>
         <td>${roleCell}</td><td>${statusCell}</td><td>${esc(last)}</td>
-        <td style="text-align:right;white-space:nowrap">${actions.join(' &nbsp; ')}</td></tr>`;
+        <td style="text-align:right"><div class="staff-actions">${actions.join('')}</div></td></tr>`;
     }).join('');
   }
 
@@ -303,56 +292,23 @@ window.RasaRoles = (function () {
     } finally { state.staffLoading = false; }
   }
 
-  /* ---------- 4. Panel Pengaturan: matriks permission ---------- */
-  function permPanelHtml() {
-    const editable = isOwner();
-    const tabs = ROLE_TABS.map(r =>
-      `<button class="perm-tab${state.permRole === r ? ' selected' : ''}" data-action="perm-tab:${r}">${ROLE_LABELS[r]}</button>`).join('');
-    return `
-    <div class="panel span-2" id="permPanel">
-      <div class="panel-head"><div><div class="panel-title">Matriks permission per role</div>
-      <div class="panel-caption">Atur siapa boleh mengakses modul apa — setiap centang divalidasi ulang oleh server</div></div>
-      <div class="perm-tabs">${tabs}</div></div>
-      <div id="permBody"><div class="empty-state">Memuat matriks permission…</div></div>
-      ${editable ? `<div class="btn-row" style="margin-top:12px">
-        <button class="btn btn-primary" data-action="perm-save">Simpan permission</button>
-        <button class="btn" data-action="perm-reset">Muat ulang</button>
-      </div>` : '<div class="hint">Hanya <b>Owner</b> yang boleh mengubah matriks ini.</div>'}
-    </div>`;
-  }
-
-  function renderPerms() {
-    const box = $('permBody');
-    if (!box) return;
-    if (!state.matrix) { box.innerHTML = '<div class="empty-state">Matriks belum dimuat.</div>'; return; }
-    const role = state.permRole;
-    const row = state.matrix[role] || {};
-    const editable = isOwner();
-    box.innerHTML = `<div class="table-wrap"><table class="perm-table"><thead><tr><th>Modul</th>${ACTIONS.map(a => '<th>' + ACTION_LABELS[a] + '</th>').join('')}</tr></thead><tbody>
-      ${MODULE_LABELS.map(([id, label]) => `<tr${id === 'overview' ? ' class="row-dim"' : ''}><td><b>${label}</b><span class="subcell">${id}</span></td>
-      ${ACTIONS.map(a => {
-        const on = Array.isArray(row[id]) && row[id].indexOf(a) >= 0;
-        const lock = !editable || id === 'overview' && a !== 'read' && a !== 'export';
-        return '<td><label class="perm-cell' + (lock ? ' locked' : '') + '"><input type="checkbox" data-perm="' + id + '" data-act="' + a + '"' +
-          (on ? ' checked' : '') + (lock ? ' disabled' : '') + '></label></td>';
-      }).join('')}</tr>`).join('')}
-    </tbody></table></div>`;
-  }
-
+  /* ---------- 4. Preset izin per role (dibaca dari server) ----------
+     Panel Matriks permission sudah dihapus dari UI: satu-satunya tempat
+     Owner mengatur izin adalah tombol "Wewenang" di tabel staf.
+     `state.matrix` tetap diambil dari server sebagai DASAR penghitungan
+     wewenang efektif tiap staf (preset bawaan role). */
   async function loadPerms(force) {
     if (!currentUser() || !window.canPerm('permissions', 'read')) return;
-    if (state.matrix && state.userPerms && !force) { renderPerms(); return; }
+    if (state.matrix && state.userPerms && !force) return;
     if (state.permLoading) return;
     state.permLoading = true;
     try {
       const res = await window.RasaAPI.get('/api/permissions');
       state.matrix = res.matrix || {};
       state.userPerms = res.users || {};
-      renderPerms();
       renderStaff();
     } catch (e) {
-      const box = $('permBody');
-      if (box) box.innerHTML = '<div class="empty-state">Gagal memuat permission: ' + esc(e.message) + '</div>';
+      console.log('load-perms-failed', String(e && e.message));
     } finally { state.permLoading = false; }
   }
 
@@ -384,17 +340,18 @@ window.RasaRoles = (function () {
         <span class="uperm-text"><b>${esc(label)}</b><small>${esc(mod)}${locked ? ' · selalu terbuka' : ''}</small></span></label>`;
     }).join('');
     openModal(`<div class="modal-head"><span class="provider-mark" style="--pm:#a97c2c">⛨</span><div><b>Wewenang ${esc(u.name || u.email)}</b><small>${esc(ROLE_LABELS[u.role] || u.role)} · dicabut/diberikan per staf, berlaku langsung</small></div><button class="modal-close" data-action="close-modal" aria-label="Tutup">×</button></div>
-    <p class="modal-text">Batalkan centang untuk <b>mencabut</b> wewenang, centang lagi untuk <b>mengembalikan</b>. Perubahan disimpan ke server dan langsung dipakai sistem setiap staf ini membuka fitur — termasuk lewat tautan langsung — tanpa perlu masuk ulang.</p>
+    <p class="modal-text">Batalkan centang untuk <b>mencabut</b> wewenang, centang lagi untuk <b>mengembalikan</b>. Perubahan hanya menyangkut staf ini dan <b>tidak mengubah staf lain</b> — disimpan ke server, divalidasi ulang, lalu langsung dipakai setiap staf ini membuka fitur (termasuk lewat tautan langsung) tanpa perlu masuk ulang. <b>Data restoran tetap tersimpan utuh</b>; yang dicabut hanya aksesnya.</p>
     <div class="uperm-list">${rows}</div>
     <div class="modal-actions"><button class="btn" data-action="close-modal">Batal</button><button class="btn btn-primary" data-action="staff-perms-save:${esc(String(u.id))}">Simpan wewenang</button></div>
-    <small class="modal-note">Wewenang yang berbeda dari matriks role <b>${esc(ROLE_LABELS[u.role] || u.role)}</b> disimpan sebagai pengecualian khusus staf ini.</small>`);
+    <small class="modal-note">Centang mengikuti preset role <b>${esc(ROLE_LABELS[u.role] || u.role)}</b>, lalu disesuaikan per staf. Setiap centang divalidasi ulang oleh server.</small>`);
   }
 
   async function staffPermsSave(id) {
     const u = (state.staff || []).find(x => String(x.id) === String(id));
     if (!u) { closeModal(); return; }
     if (!isOwner()) { toast('Hanya Owner yang boleh mengubah wewenang staf.'); return; }
-    if (!state.matrix) { toast('Matriks permission belum dimuat.'); return; }
+    if (!state.matrix) { await loadPerms(true); }
+    if (!state.matrix) { toast('Preset izin role belum dimuat dari server.'); return; }
     const eff = {};
     MODULE_LABELS.forEach(([mod]) => {
       const cb = document.querySelector('[data-uperm="' + mod + '"]');
@@ -403,20 +360,13 @@ window.RasaRoles = (function () {
       const roleRow = (state.matrix[u.role] && state.matrix[u.role][mod]) || [];
       eff[mod] = cb.checked ? (roleRow.length ? roleRow.slice() : ['read']) : [];
     });
-    /* kirim peta efektif SEMUA staf — server menyimpan selisihnya terhadap role */
-    const users = {};
-    (state.staff || []).forEach(s => {
-      if (s.role === 'owner' || String(s.id) === String(u.id)) return;
-      users[s.id] = staffEffective(s);
-    });
-    users[u.id] = eff;
     try {
-      const res = await window.RasaAPI.put('/api/permissions', { matrix: state.matrix, users });
+      /* hanya staf ini yang dikirim — baris wewenang staf lain tidak tersentuh */
+      const res = await window.RasaAPI.put('/api/permissions', { users: { [u.id]: eff } });
       if (res.matrix) state.matrix = res.matrix;
       state.userPerms = res.users || {};
       closeModal();
       renderStaff();
-      renderPerms();
       toast('Wewenang ' + (u.name || u.email) + ' disimpan — langsung berlaku di server.');
     } catch (e) {
       toast(e.message);
@@ -438,10 +388,6 @@ window.RasaRoles = (function () {
     if (window.canPerm('staff', 'read') && !$('staffPanel')) {
       grid.insertAdjacentHTML('beforeend', staffPanelHtml());
       loadStaff();
-    }
-    if (window.canPerm('permissions', 'read') && !$('permPanel')) {
-      grid.insertAdjacentHTML('beforeend', permPanelHtml());
-      loadPerms();
     }
   }
 
@@ -495,21 +441,6 @@ window.RasaRoles = (function () {
     } catch (e) { toast(e.message); }
   }
 
-  async function permSave() {
-    if (!isOwner()) { toast('Hanya owner yang boleh mengubah permission.'); return; }
-    if (!state.matrix) { toast('Matriks belum dimuat.'); return; }
-    try {
-      const res = await window.RasaAPI.put('/api/permissions', { matrix: state.matrix });
-      if (res.matrix) state.matrix = res.matrix;
-      /* perbarui sesi sendiri bila role berubah */
-      const me = currentUser();
-      if (me && state.matrix[me.role]) window.RasaSession.permissions = state.matrix[me.role];
-      renderPerms();
-      applyNav();
-      toast('Permission tersimpan & berlaku di server.');
-    } catch (e) { toast(e.message); }
-  }
-
   const actions = {
     'staff-form-toggle': () => {
       state.formOpen = !state.formOpen;
@@ -521,10 +452,7 @@ window.RasaRoles = (function () {
     'staff-del': id => staffDelete(id),
     'staff-del-confirm': id => staffDeleteConfirm(id),
     'staff-perms': id => staffPermsModal(id),
-    'staff-perms-save': id => staffPermsSave(id),
-    'perm-tab': role => { if (ROLE_TABS.indexOf(role) >= 0) { state.permRole = role; document.querySelectorAll('.perm-tab').forEach(b => b.classList.toggle('selected', b.dataset.action === 'perm-tab:' + role)); renderPerms(); } },
-    'perm-save': () => permSave(),
-    'perm-reset': () => { state.matrix = null; loadPerms(true); toast('Matriks dimuat ulang dari server.'); }
+    'staff-perms-save': id => staffPermsSave(id)
   };
 
   /* ---------- 6. Hook render & sesi ---------- */
@@ -617,8 +545,9 @@ window.RasaRoles = (function () {
 
   /* ---------- 5b. Penyegaran izin dari server ----------
      Izin selalu dibaca ulang dari backend (tanpa login ulang) sehingga
-     pencabutan wewenang oleh Owner langsung terasa: menu disembunyikan,
-     halaman aktif diganti layar izin, dan data lokal ikut dibersihkan. */
+     pencabutan wewenang oleh Owner langsung terasa: menu disembunyikan dan
+     halaman aktif diganti layar izin. DATA TIDAK DIHAPUS di mana pun —
+     salinan lokal dan data server tetap utuh, sinkronisasi tetap jalan. */
   let permBusy = false, permTimer = null, lastPermJson = null;
 
   async function refreshPerms(force) {
@@ -641,9 +570,6 @@ window.RasaRoles = (function () {
 
       const after = readableModulesOf(next);
       const revoked = before.filter(m => after.indexOf(m) < 0);
-      const allModules = MODULE_LABELS.map(x => x[0]);
-      /* salinan data lokal milik modul tanpa izin ikut dibuang */
-      purgeModules(allModules.filter(m => after.indexOf(m) < 0));
       applyNav();
       injectNav();
 
@@ -652,7 +578,8 @@ window.RasaRoles = (function () {
          jadi wewenang yang hilang antar-poll tetap diumumkan — termasuk pada
          poll pertama setelah halaman dibuka. */
       if (revoked.length) {
-        toast('Owner mencabut wewenang ' + revoked.map(m => (MODULE_LABELS.find(x => x[0] === m) || [])[1] || m).join(', ') + '.');
+        toast('Owner mencabut wewenang ' + revoked.map(m => (MODULE_LABELS.find(x => x[0] === m) || [])[1] || m).join(', ') +
+          ' — menu disembunyikan, data tetap tersimpan & tersinkron.');
       }
       /* evaluasi ulang halaman yang sedang terbuka */
       const req = state.requested;
@@ -710,18 +637,6 @@ window.RasaRoles = (function () {
           .then(() => { toast('Role staf diubah menjadi ' + (ROLE_LABELS[role] || role) + '.'); loadStaff(true); })
           .catch(err => { toast(err.message); loadStaff(true); });
         return;
-      }
-      const cb = e.target && e.target.closest ? e.target.closest('[data-perm]') : null;
-      if (cb) {
-        if (!state.matrix) return;
-        const mod = cb.getAttribute('data-perm'), act = cb.getAttribute('data-act');
-        const role = state.permRole;
-        state.matrix[role] = state.matrix[role] || {};
-        const list = Array.isArray(state.matrix[role][mod]) ? state.matrix[role][mod].slice() : [];
-        const i = list.indexOf(act);
-        if (cb.checked && i < 0) list.push(act);
-        if (!cb.checked && i >= 0) list.splice(i, 1);
-        state.matrix[role][mod] = list;
       }
     });
 

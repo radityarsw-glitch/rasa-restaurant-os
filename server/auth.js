@@ -10,7 +10,7 @@ import {
   normEmail, clean, readJson, deviceOf, ipOf, tokenFrom, maskEmail
 } from './lib.js';
 import {
-  matrixFor, matrixToRows, ROLES, roleLabel,
+  matrixFor, matrixToRows, ROLES, roleLabel, MODULES,
   applyUserOverrides, userPermsToRows, diffFromRole, ACTIONS
 } from './permissions.js';
 import { writeAudit } from './audit.js';
@@ -503,9 +503,28 @@ export async function removeStaff(req, env, a, id) {
 
 /* ============================================================
    Permission (hanya owner boleh mengubah)
-   Bentuk: matrix[role][modul] = [aksi]  → matriks role
-           users[userId][modul] = [aksi] → wewenang khusus staf
+   Bentuk: users[userId][modul] = [aksi] → wewenang khusus staf
+           matrix[role][modul]  = [aksi] → preset dasar per role
+                                     (opsional; UI matriks sudah dihapus,
+                                      tetap tersedia lewat API untuk
+                                      penyetelan preset)
+   Setiap modul & aksi yang dikirim DIVALIDASI ULANG oleh server:
+   modul harus terdaftar di MODULES dan aksi harus termasuk ACTIONS,
+   selain itu permintaan ditolak 400 (bukan diam-diam dibuang).
    ============================================================ */
+function validatePermMap(map) {
+  const mods = Object.keys(map || {});
+  for (const mod of mods) {
+    if (!MODULES.some(m => m.id === mod)) return 'Modul tidak dikenal: ' + mod;
+    const acts = map[mod];
+    if (!Array.isArray(acts)) return 'Daftar aksi pada modul "' + mod + '" tidak valid.';
+    for (const act of acts) {
+      if (ACTIONS.indexOf(act) < 0) return 'Aksi tidak dikenal pada modul "' + mod + '": ' + act;
+    }
+  }
+  return null;
+}
+
 export async function listUserPerms(env, restaurantId) {
   await ensureUserPerms(env);
   try {
@@ -539,12 +558,32 @@ export async function setPermissions(req, env, a) {
   const body = await readJson(req);
   const matrix = body.matrix;
   const users = body.users;
-  if (!matrix || typeof matrix !== 'object') return err('Format permission tidak valid.', 400, { field: 'matrix' });
+  if (matrix !== undefined && (!matrix || typeof matrix !== 'object' || Array.isArray(matrix))) {
+    return err('Format permission tidak valid.', 400, { field: 'matrix' });
+  }
   if (users !== undefined && (!users || typeof users !== 'object' || Array.isArray(users))) {
     return err('Format wewenang staf tidak valid.', 400, { field: 'users' });
   }
   const now = Date.now();
-  const roles = Object.keys(matrix).filter(r => ROLES.some(x => x.id === r) && r !== 'owner');
+  const touched = [];
+
+  /* --- preset per role (opsional, divalidasi ketat) ---
+     Kunci `owner` diabaikan: owner selalu memiliki akses penuh dan tidak
+     pernah disimpan di role_perms. Role yang tidak dikenal = tolak 400. */
+  const roleKeys = matrix ? Object.keys(matrix) : [];
+  for (const role of roleKeys) {
+    if (role === 'owner') continue;
+    if (!ROLES.some(x => x.id === role)) {
+      return err('Role tidak dikenal: ' + role, 400, { field: 'matrix.' + role });
+    }
+    const row = matrix[role];
+    if (!row || typeof row !== 'object' || Array.isArray(row)) {
+      return err('Format matriks role "' + role + '" tidak valid.', 400, { field: 'matrix.' + role });
+    }
+    const problem = validatePermMap(row);
+    if (problem) return err(problem, 400, { field: 'matrix.' + role });
+  }
+  const roles = roleKeys.filter(r => r !== 'owner');
   for (const role of roles) {
     const rows = matrixToRows(role, matrix[role]);
     for (const r of rows) {
@@ -555,9 +594,9 @@ export async function setPermissions(req, env, a) {
     }
   }
 
-  /* --- wewenang khusus per staf: ganti seluruh baris restoran ini --- */
+  /* --- wewenang khusus per staf: hanya baris staf yang dikirim yang diganti --- */
   let staffTouched = 0;
-  if (users !== undefined) {
+  if (users !== undefined && Object.keys(users).length) {
     await ensureUserPerms(env);
     const valid = await DB(env)
       .prepare('SELECT id,role FROM users WHERE restaurant_id = ?')
@@ -571,31 +610,41 @@ export async function setPermissions(req, env, a) {
     const roleRows = stored.results || [];
 
     const toInsert = [];
-    Object.keys(users).forEach(uid => {
-      if (!roleOf[uid]) return;                      /* staf lain restoran ditolak */
-      if (uid === a.user.id) return;                 /* owner tidak bisa membatasi dirinya sendiri */
+    for (const uid of Object.keys(users)) {
+      /* staf lain / bukan milik restoran ini → tolak, bukan abaikan */
+      if (!roleOf[uid]) return err('Wewenang hanya bisa diatur untuk staf restoran Anda sendiri.', 403, { field: 'users.' + uid });
+      if (uid === a.user.id) continue;             /* owner tidak bisa membatasi dirinya sendiri */
+      if (roleOf[uid] === 'owner') continue;        /* owner lain selalu penuh */
       const eff = users[uid];
-      if (!eff || typeof eff !== 'object' || Array.isArray(eff)) return;
+      if (!eff || typeof eff !== 'object' || Array.isArray(eff)) {
+        return err('Format wewenang staf tidak valid.', 400, { field: 'users.' + uid });
+      }
+      const problem = validatePermMap(eff);
+      if (problem) return err(problem, 400, { field: 'users.' + uid });
       const roleMatrix = matrixFor(String(roleOf[uid]), roleRows);
-      const diff = diffFromRole(roleMatrix, eff);
-      const rows = userPermsToRows(uid, diff);
-      if (rows.length) { toInsert.push.apply(toInsert, rows); staffTouched++; }
-    });
+      const rows = userPermsToRows(uid, diffFromRole(roleMatrix, eff));
+      toInsert.push({ uid, rows });
+      staffTouched++;
+      touched.push(uid);
+    }
 
-    await DB(env).prepare('DELETE FROM user_perms WHERE restaurant_id = ?')
-      .bind(a.user.restaurant_id).run();
-    for (const r of toInsert) {
-      await DB(env).prepare(
-        `INSERT INTO user_perms (restaurant_id,user_id,module,actions,updated_at) VALUES (?,?,?,?,?)
-         ON CONFLICT(restaurant_id,user_id,module) DO UPDATE SET actions = excluded.actions, updated_at = excluded.updated_at`
-      ).bind(a.user.restaurant_id, r.userId, r.module, r.actions, now).run();
+    for (const item of toInsert) {
+      await DB(env).prepare('DELETE FROM user_perms WHERE restaurant_id = ? AND user_id = ?')
+        .bind(a.user.restaurant_id, item.uid).run();
+      for (const r of item.rows) {
+        await DB(env).prepare(
+          `INSERT INTO user_perms (restaurant_id,user_id,module,actions,updated_at) VALUES (?,?,?,?,?)
+           ON CONFLICT(restaurant_id,user_id,module) DO UPDATE SET actions = excluded.actions, updated_at = excluded.updated_at`
+        ).bind(a.user.restaurant_id, r.userId, r.module, r.actions, now).run();
+      }
     }
   }
 
   await writeAudit(env, a.ctx, 'permissions.update', 'role_perms', {
     roles,
-    modules: roles.map(r => Object.keys(matrix[r] || {}).length),
-    staffOverrides: staffTouched
+    modules: roles.reduce((n, r) => n + Object.keys(matrix[r] || {}).length, 0),
+    staffOverrides: staffTouched,
+    staff: touched.slice(0, 40)
   });
   return getPermissions(req, env, a);
 }

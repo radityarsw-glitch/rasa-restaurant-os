@@ -5,7 +5,7 @@
    ============================================================ */
 
 import { json, err, readJson, clean, MAX_PAYLOAD } from './lib.js';
-import { can, moduleOfKey, readableModules } from './permissions.js';
+import { can, moduleOfKey } from './permissions.js';
 import { requireAuth } from './auth.js';
 import { writeAudit } from './audit.js';
 
@@ -127,27 +127,19 @@ function validateValue(key, v) {
   return null;
 }
 
-/* ---------- GET /api/data ---------- */
+/* ---------- GET /api/data ----------
+   Keputusan desain: seluruh payload restoran SELALU dikirim, tanpa disaring
+   per modul. Pencabutan wewenang oleh Owner tidak memutus sinkronisasi dan
+   tidak pernah menghapus data — yang dibatasi adalah AKSES (menu
+   disembunyikan, tautan langsung ditolak) dan TULISAN (PUT /api/data). */
 export async function getData(req, env) {
   const a = await requireAuth(req, env);
-  /* minimal harus ada satu modul yang boleh dibaca — kalau semua dicabut,
-     staf ini memang tidak berhak melihat data restoran sama sekali */
-  if (!readableModules(a.perms).length) {
-    return err('Anda tidak memiliki izin untuk membaca data restoran. Hubungi Owner.', 403, { code: 'forbidden' });
-  }
 
   const row = await DB(env)
     .prepare('SELECT payload,rev,updated_at,updated_by FROM workspace WHERE restaurant_id = ?')
     .bind(a.user.restaurant_id).first();
 
-  const full = row ? parse(row.payload) : {};
-  const payload = {};
-  const stripped = [];
-  Object.keys(full).forEach(k => {
-    const mod = moduleOfKey(k);
-    if (mod !== 'misc' && !can(a.perms, mod, 'read')) { stripped.push(mod); return; }
-    payload[k] = full[k];
-  });
+  const payload = row ? parse(row.payload) : {};
 
   return json({
     ok: true,
@@ -155,7 +147,6 @@ export async function getData(req, env) {
     rev: row ? row.rev : 0,
     updatedAt: row ? row.updated_at : 0,
     updatedBy: row ? row.updated_by : '',
-    stripped: Array.from(new Set(stripped)),
     permissions: a.perms,
     user: { id: a.user.id, name: a.user.name, role: a.user.role, email: a.user.email }
   });
@@ -238,14 +229,8 @@ export async function putData(req, env) {
     });
   }
 
-  /* payload yang dikembalikan = versi kanonik untuk klien */
-  const visible = {};
-  Object.keys(merged).forEach(k => {
-    const mod = moduleOfKey(k);
-    if (mod !== 'misc' && !can(a.perms, mod, 'read')) return;
-    visible[k] = merged[k];
-  });
-
+  /* Kanonik untuk klien = payload penuh (data tidak pernah disembunyikan;
+     yang ditolak hanya tulisan, dan sudah dilaporkan lewat `denied`). */
   return json({
     ok: true,
     rev,
@@ -254,7 +239,7 @@ export async function putData(req, env) {
     denied,
     invalid,
     unchanged: unchanged.length,
-    payload: visible
+    payload: merged
   });
 }
 

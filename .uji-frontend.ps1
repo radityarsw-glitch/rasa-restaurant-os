@@ -1,7 +1,10 @@
 # Uji frontend (headless Chrome) terhadap wrangler dev lokal di port 8790
 $ErrorActionPreference = 'Stop'
 $base = 'http://127.0.0.1:8790'
-$assets = Join-Path $env:TEMP 'rasa-assets'
+# folder aset = folder yang disajikan `wrangler dev`. Bisa dioverride lewat
+# RASA_ASSETS bila server dijalankan dari lokasi lain.
+$assets = if ($env:RASA_ASSETS) { $env:RASA_ASSETS } else { Join-Path $env:TEMP 'rasa-assets' }
+New-Item -ItemType Directory -Force -Path $assets | Out-Null
 $domDir = Join-Path $env:TEMP 'rasa-dom'
 New-Item -ItemType Directory -Force -Path $domDir | Out-Null
 $chrome = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
@@ -14,10 +17,16 @@ function Call($method, $path, $body, $token) {
   if ($body -ne $null) { $p.Body = ($body | ConvertTo-Json -Depth 8 -Compress) }
   try { return Invoke-RestMethod @p }
   catch {
+    $txt = ''
+    if ($_.ErrorDetails -and $_.ErrorDetails.Message) { $txt = $_.ErrorDetails.Message }
     $resp = $_.Exception.Response
     if ($resp) {
-      $sr = New-Object IO.StreamReader($resp.GetResponseStream())
-      $txt = $sr.ReadToEnd()
+      if (-not $txt) {
+        try {
+          $sr = New-Object IO.StreamReader($resp.GetResponseStream())
+          $txt = $sr.ReadToEnd()
+        } catch { $txt = '' }
+      }
       Write-Host ("  ! " + $method + ' ' + $path + ' -> ' + [int]$resp.StatusCode + ' ' + $txt)
       try { return ($txt | ConvertFrom-Json) } catch { return @{ ok = $false; error = $txt } }
     }
@@ -97,8 +106,12 @@ $eff = @{}
 $p.matrix.kitchen.PSObject.Properties | ForEach-Object { $eff[$_.Name] = @($_.Value) }
 $eff['reservations'] = @()
 $users = @{}; $users[$uidRev] = $eff
-$set = Call 'PUT' '/api/permissions' @{ matrix = $p.matrix; users = $users } $ownerTok
+$set = Call 'PUT' '/api/permissions' @{ users = $users } $ownerTok
 if ($set.users.$uidRev.PSObject.Properties.Name -contains 'reservations') { Ok 'wewenang dicabut' } else { Fail 'cabut wewenang' }
+
+# data TETAP utuh & tetap terkirim - yang hilang hanya akses menu/halaman
+$dRev = Call 'GET' '/api/data' $null $tokRev
+if ($dRev.payload.PSObject.Properties.Name -contains 'reservations') { Ok 'data reservasi staf tetap terkirim (tidak dipotong)' } else { Fail 'data reservasi hilang dari staf yang dicabut' }
 
 Write-Host "== 3. halaman boot (set sesi lalu buka tautan langsung) =="
 $boot = @'
@@ -114,7 +127,7 @@ $boot = @'
 Set-Content -Path (Join-Path $assets 'test-boot.html') -Value $boot -Encoding UTF8
 
 # pencabutan langsung: halaman staf sendiri yang mencabut wewenangnya memakai
-# token Owner — untuk menguji bahwa PANTAUAN IZIN (poll 20 detik) benar-benar
+# token Owner - untuk menguji bahwa PANTAUAN IZIN (poll 20 detik) benar-benar
 # menangkap perubahan tanpa login ulang.
 $live = @'
 <script>
@@ -138,10 +151,13 @@ $live = @'
         var users={}; users[uid]=eff;
         return fetch('/api/permissions',{method:'PUT',
           headers:{authorization:'Bearer '+ot,'content-type':'application/json'},
-          body:JSON.stringify({matrix:p.matrix,users:users})});
+          body:JSON.stringify({users:users})});
       })
       .then(function(){ window.__revoked=true; })
       .catch(function(e){ window.__revoked='err: '+e.message; });
+      /* tandai di DOM supaya hasil dump chrome bisa memeriksanya */
+      var mark=function(){ var v=window.__revoked; if(v!==undefined) document.documentElement.setAttribute('data-revoked',String(v)); };
+      setTimeout(function(){ var t=setInterval(function(){ mark(); if(window.__revoked!==undefined) clearInterval(t); },200); },0);
   },100);
 })();
 </script>
@@ -203,8 +219,8 @@ Write-Host "== 7. Chrome: pencabutan saat halaman staf SEDANG terbuka (tanpa log
 $goLive = '/?owner=' + [uri]::EscapeDataString($ownerTok) + '&uid=' + [uri]::EscapeDataString($sFull.user.id) + '#reservations'
 $urlLive = $base + '/test-boot.html?token=' + [uri]::EscapeDataString($tokFull) + '&go=' + [uri]::EscapeDataString($goLive)
 $domD = Dump $urlLive 'res-live.html' 45000
-if ($domD -match '"revoked":true') { Ok 'pencabutan oleh Owner terjadi saat halaman terbuka' } else {
-  $rv = [regex]::Match($domD, '"revoked":[^,}]*').Value
+if ($domD -match 'data-revoked="true"') { Ok 'pencabutan oleh Owner terjadi saat halaman terbuka' } else {
+  $rv = [regex]::Match($domD, 'data-revoked="[^"]*"').Value
   Fail ('status pencabutan tidak diketahui: ' + $rv)
 }
 if ($domD -match 'Anda tidak punya izin') { Ok 'pantauan izin otomatis mengganti halaman jadi layar izin' } else { Fail 'halaman tidak berubah jadi layar izin setelah pencabutan' }

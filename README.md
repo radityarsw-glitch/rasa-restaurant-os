@@ -25,7 +25,7 @@ Setiap data yang Anda isi **tersimpan otomatis** — dulu hanya di `localStorage
 
 - **Font:** display **Fraunces** (judul, angka penting) + teks **Plus Jakarta Sans** via Google Fonts.
 - **Color grading (6 pilihan):** Ambar Emas, Hutan Zamrud, Samudra Biru, Anggur Mawar, **Koral Laut** (nuansa restoran seafood, merah bata/coral), dan **Midnight Neon** (gelap). Dipilih lewat **Pengaturan → Color grading**, tersimpan otomatis.
-- **Kontras aman di semua tema:** gradien puncak panel/kartu memakai variabel `--surface-hi` (di tema gelap menjadi gelap, bukan tetap putih), jadi judul dan angka terang tidak pernah jadi putih di atas putih. Elemen grafik tren penjualan (angka total, garis kisi, label hari, legenda, titik hari ini), tombol status, serta kartu uang/panel ikut disesuaikan per tema. Setiap color grading diuji otomatis: teks utama, caption, label tombol, badge status, dan sisi sidebar semuanya memenuhi rasio kontras **≥ 4.5 : 1 (WCAG AA)**.
+- **Kontras aman di semua tema:** gradien puncak panel/kartu memakai variabel `--surface-hi` (di tema gelap menjadi gelap, bukan tetap putih), jadi judul dan angka terang tidak pernah jadi putih di atas putih. **Semua tombol** memakai varian warna yang lebih terang dan tegas (gradien utama per tema, label tinta penuh, tombol berbahaya dengan teks putih murni), dan **Midnight Neon** memakai palet terang untuk teks, border, sidebar, badge, serta tombol agar mudah dibaca di latar gelap. Setiap color grading diuji: teks utama, caption, label tombol, badge status, dan sisi sidebar semuanya memenuhi rasio kontras **≥ 4.5 : 1 (WCAG AA)**.
 - **Tombol Reset Data** (Ringkasan) ditetapkan ulang di blok CSS terakhir sehingga selalu tampil jelas: latar merah gelap + tulisan putih di setiap color grading.
 - **Notifikasi:** kartu notifikasi melayang di **pojok kanan atas** (maksimal 4, hilang otomatis ~8 detik) dan daftarnya bisa dibuka lewat tombol **🔔 lonceng** di bilah atas — **klik notifikasi untuk langsung menuju halaman tujuannya** (misal reservasi yang mendekat, stok menipis, pesanan baru).
 - **Menu produk:** foto produk atau **inisial nama** agar daftar menu lebih rapi dan konsisten.
@@ -73,17 +73,19 @@ Kelompok yang tidak berhak diakses peran login akan disembunyikan otomatis; work
 
 Izin ditentukan dua lapis dan **dicek di setiap akses** (bukan hanya saat membuka halaman):
 
-1. **Matriks role** — 20 modul × aksi (baca/tambah/ubah/hapus/setujui/ekspor) per peran (Owner, Manager, Kasir, Kitchen, Waiter). Diubah lewat **Pengaturan → Permission**.
-2. **Wewenang khusus per staf** — tombol **Wewenang** pada tabel staf mengizinkan Owner mencabut/menambah satu modul untuk satu staf tertentu tanpa mengubah matriks role-nya. Disimpan di tabel `user_perms` dan menimpa matriks role (Owner selalu penuh).
+1. **Preset dasar per role** — 20 modul × aksi (baca/tambah/ubah/hapus/setujui/ekspor) untuk tiap peran (Owner, Manager, Kasir, Kitchen, Waiter), disimpan di server (`role_perms`) sebagai titik awal tiap staf. Panel matriks permission sudah **dihapus dari tampilan** — Owner tidak perlu menata izin satu per satu.
+2. **Wewenang khusus per staf** — satu-satunya tempat Owner mengatur izin di UI: tombol **Wewenang** di setiap baris staf (bersama **Nonaktifkan** dan **Hapus**). Mencabut/mengembalikan modul hanya menyangkut staf itu, disimpan di tabel `user_perms` sebagai selisih terhadap preset role (Owner selalu penuh).
+
+Setiap centang **divalidasi ulang oleh server**: modul harus terdaftar dan aksi harus termasuk daftar aksi resmi — selain itu permintaan ditolak `400`, bukan diam-diam dibuang. Mengubah satu staf juga **tidak pernah menyentuh baris staf lain**.
 
 Yang terjadi begitu Owner menyimpan perubahan — **tanpa staf perlu login ulang**:
 
 - **Menu navigasi** modul yang dicabut langsung disembunyikan (termasuk label grupnya bila kosong).
 - **Tautan langsung** (`/#reservations`, `/#inventory`, …) tidak bisa dipakai menyiasati: halaman diganti layar **“Anda tidak punya izin”** yang menjelaskan modul, peran, dan jumlah wewenang aktif, plus tombol kembali ke Ringkasan. Tautan yang tidak dikenal menampilkan layar 404 terpisah.
-- **Data ikut dibersihkan:** baris data modul tanpa izin dikeluarkan dari respons `GET /api/data` (dan dilaporkan sebagai `stripped`), salinan lokal di perangkat staf dibuang, serta kunci tersebut tidak pernah ikut disinkronkan.
+- **Data TIDAK PERNAH dihapus maupun dipotong.** Pencabutan wewenang hanya membatasi *akses*: seluruh data restoran tetap tersimpan utuh di server dan tetap ikut disinkron ke perangkat staf, jadi staf tidak “terputus” dari data Owner. Begitu wewenang dikembalikan, menu dan halaman langsung terbuka kembali tanpa kehilangan apa pun.
 - **Tulis ditolak server:** `PUT /api/data` untuk modul tanpa izin `update` dikembalikan sebagai `denied` — klien hanya mengirim key yang memang boleh ditulis, jadi tidak ada toast penolakan yang tidak perlu.
-- **API lain ikut dikunci:** `GET /api/permissions`, `GET/POST/PUT/DELETE /api/staff` menolak staf tanpa izin (403), dan `GET /api/data` mengembalikan 403 bila staf kehilangan seluruh modul.
-- **Dipantau terus:** klien membaca ulang izin dari `/api/auth/me` setiap 20 detik, saat jendela kembali aktif/fokus, dan saat menerima 403 — begitu izin berubah, menu, layar izin, dan data lokal menyesuaikan sendiri; perubahan juga muncul sebagai notifikasi “Owner mencabut wewenang …”.
+- **API lain ikut dikunci:** `GET /api/permissions`, `GET/POST/PUT/DELETE /api/staff` menolak staf tanpa izin (403).
+- **Dipantau terus:** klien membaca ulang izin dari `/api/auth/me` setiap 20 detik, saat jendela kembali aktif/fokus, dan saat menerima 403 — begitu izin berubah, menu dan layar izin menyesuaikan sendiri; perubahan juga muncul sebagai notifikasi “Owner mencabut wewenang … (data tetap tersimpan)”.
 
 Izin yang sama tetap ditegakkan di backend (`server/permissions.js` + pemeriksaan di tiap endpoint), jadi menyembunyikan menu di sisi klien bukan satu-satunya pengaman.
 
@@ -141,8 +143,11 @@ git push -u origin main                 :: GitHub Actions otomatis build & deplo
 
 Dua skrip pengujian dijalankan terhadap `wrangler dev --port 8790 --local` (D1 lokal):
 
-- `.uji-permisi.ps1` — 11 skenario API permission: cabut/kanthi wewenang, data di-strip, tulis & API permission ditolak, matriks role berlaku langsung.
-- `.uji-frontend.ps1` — pemeriksaan DOM via headless Chrome: badge status jadwal, foto `object-fit: contain`, tautan langsung yang ditolak, menu disembunyikan, dan pencabutan saat halaman terbuka (poll izin 20 detik).
+- `.uji-permisi.ps1` — 12 skenario API permission: cabut/kembalikan wewenang per staf (tanpa menyentuh staf lain), validasi ketat modul & aksi, data tetap utuh, tulis & API permission ditolak, preset per role berlaku langsung.
+- `.uji-frontend.ps1` — uji headless Chrome: DOM badge status jadwal, foto `object-fit: contain`, menu/halaman ditolak saat wewenang dicabut, notifikasi pencabutan langsung saat halaman terbuka (poll izin 20 detik), serta data tetap terkirim ke staf yang dicabut.
+- `.uji-kontras.ps1` — mengukur rasio kontras label tombol terhadap latarnya di 6 tema (48 pemeriksaan, ambang WCAG AA 4.5:1).
+
+Folder aset yang disajikan `wrangler dev` bisa dioverride lewat variabel lingkungan `RASA_ASSETS` (default: `%TEMP%\rasa-assets`).
 
 ## Batasan
 
