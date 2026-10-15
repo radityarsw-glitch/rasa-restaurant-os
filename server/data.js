@@ -187,9 +187,13 @@ export async function putData(req, env) {
     if (problem) { invalid.push({ key, reason: problem }); continue; }
     /* Workspace "Antar Ke Meja" (modul 'antar') juga menulis key pesanan:
        Acc & antar / Sampai di meja cukup berwewenang antar — modul 'orders'
-       tetap yang utama; keduanya berlaku sebagai izin alternatif. */
+       tetap yang utama; keduanya berlaku sebagai izin alternatif.
+       Serupa, "Kosongkan Meja" (modul 'clear-table') menulis 'reservations'
+       (field clearedAt) — cukup berwewenang clear-table tanpa perlu
+       reservations:update penuh, agar bisa dicabut/diberikan terpisah. */
     if (mod !== 'misc' && !can(a.perms, mod, 'update') &&
-        !(mod === 'orders' && can(a.perms, 'antar', 'update'))) {
+        !(mod === 'orders' && can(a.perms, 'antar', 'update')) &&
+        !(mod === 'reservations' && can(a.perms, 'clear-table', 'update'))) {
       denied.push({ key, module: mod });
       continue;
     }

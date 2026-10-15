@@ -15,7 +15,7 @@ window.RasaRoles = (function () {
   /* Halaman lama -> modul permission. Halaman baru memakai nama modul. */
   const PAGE_MODULE = {
     overview: 'overview', orders: 'orders', kitchen: 'kitchen',
-    pelayan: 'antar', 'pelayan-meja': 'antar',
+    pelayan: 'antar', 'pelayan-meja': 'clear-table',
     reservations: 'reservations', menu: 'menu', inventory: 'inventory',
     procurement: 'procurement', finance: 'finance', reports: 'reports',
     settings: 'settings'
@@ -23,7 +23,7 @@ window.RasaRoles = (function () {
 
   const MODULE_LABELS = [
     ['overview', 'Ringkasan'], ['pos', 'POS / Kasir'], ['orders', 'Pesanan'],
-    ['kitchen', 'Kitchen Display'], ['antar', 'Antar Ke Meja'],
+    ['kitchen', 'Kitchen Display'], ['antar', 'Antar Ke Meja'], ['clear-table', 'Kosongkan Meja'],
     ['tables', 'Meja'], ['reservations', 'Reservasi'],
     ['menu', 'Menu & produk'], ['inventory', 'Persediaan'], ['recipes', 'Resep / BOM'],
     ['procurement', 'Pengadaan'], ['staff', 'Staf'], ['shifts', 'Shift'],

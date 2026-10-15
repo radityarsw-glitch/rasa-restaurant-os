@@ -2769,12 +2769,12 @@ function startKdsTimer(){
    Setiap aksi yang mengubah data dicek dulu di sini (dan tetap divalidasi
    backend pada /api/*), jadi staf yang wewenangnya dicabut tidak hanya
    kehilangan menu — tombol aksinya juga mati. */
-const PERM_MODULE_LABEL={overview:'Ringkasan',pos:'POS / Kasir',orders:'Pesanan',kitchen:'Kitchen Display',antar:'Antar Ke Meja',tables:'Meja',reservations:'Reservasi',menu:'Menu & produk',inventory:'Persediaan',recipes:'Resep / BOM',procurement:'Pengadaan',staff:'Staf',shifts:'Shift',customers:'Pelanggan',finance:'Keuangan',accounting:'Accounting',reports:'Laporan',analytics:'Analytics',alerts:'Alert Center',audit:'Audit log',settings:'Pengaturan',permissions:'Permission'};
+const PERM_MODULE_LABEL={overview:'Ringkasan',pos:'POS / Kasir',orders:'Pesanan',kitchen:'Kitchen Display',antar:'Antar Ke Meja','clear-table':'Kosongkan Meja',tables:'Meja',reservations:'Reservasi',menu:'Menu & produk',inventory:'Persediaan',recipes:'Resep / BOM',procurement:'Pengadaan',staff:'Staf',shifts:'Shift',customers:'Pelanggan',finance:'Keuangan',accounting:'Accounting',reports:'Laporan',analytics:'Analytics',alerts:'Alert Center',audit:'Audit log',settings:'Pengaturan',permissions:'Permission'};
 const PERM_ACTION_LABEL={read:'membuka',create:'menambah',update:'mengubah',delete:'menghapus',approve:'menyetujui',export:'mengekspor'};
 const ACTION_PERM={
   'booking':['reservations','create'],'save-res':['reservations','create'],'res-confirm':['reservations','create'],'res-commit':['reservations','create'],
   'edit-res:':['reservations','update'],'toggle-dp:':['reservations','update'],'cancel-res:':['reservations','update'],'confirm-cancel-res:':['reservations','update'],'del-res:':['reservations','update'],
-  'clear-res-history':['reservations','delete'],'confirm-clear-res-history':['reservations','delete'],'acc-clear-table:':['reservations','update'],
+  'clear-res-history':['reservations','delete'],'confirm-clear-res-history':['reservations','delete'],'acc-clear-table:':['clear-table','update'],
   'add-menu':['menu','create'],'save-menu:':['menu','update'],'edit-menu:':['menu','update'],'delete-menu:':['menu','delete'],
   'add-variant:':['menu','update'],'pick-variant:':['menu','create'],'remove-menu-image':['menu','update'],
   'start-prep:':['orders','update'],'mark-ready:':['orders','update'],'cancel-order:':['orders','update'],'confirm-cancel-order:':['orders','update'],
