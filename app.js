@@ -5,7 +5,7 @@ const SEED_ORDERS=[
  {id:'#RS-2838',guest:'Salsa Aulia',items:'3 item',type:'QR Meja 05',total:'Rp 137.000',status:'Diproses',cls:'preparing',time:'12:31'},
  {id:'#RS-2837',guest:'Dito Mahendra',items:'2 item',type:'QR Meja 02',total:'Rp 95.000',status:'Dibayar',cls:'paid',time:'12:26'}
 ];
-const pageNames={overview:'Ringkasan',orders:'Pesanan',reservations:'Reservasi',menu:'Menu & produk',kitchen:'Dapur / KDS',pelayan:'Antar Ke Meja',inventory:'Persediaan',recipes:'Resep / BOM',procurement:'Pengadaan',finance:'Keuangan',reports:'Laporan',settings:'Pengaturan'};
+const pageNames={overview:'Ringkasan',orders:'Pesanan',reservations:'Reservasi',menu:'Menu & produk',kitchen:'Dapur / KDS',pelayan:'Antar Ke Meja','pelayan-meja':'Kosongkan Meja',inventory:'Persediaan',recipes:'Resep / BOM',procurement:'Pengadaan',finance:'Keuangan',reports:'Laporan',settings:'Pengaturan'};
 const money=n=>'Rp '+(Number(n)||0).toLocaleString('id-ID');
 const parseRp=s=>parseInt(String(s||'').replace(/[^\d]/g,''),10)||0;
 /* 6 pilihan tampilan warna (color grading) — disimpan di store.theme */
@@ -45,8 +45,9 @@ function tableCapacity(no){
 function activeReservations(){
   return (store.reservations||[]).filter(r=>r&&r.status!=='cancelled');
 }
-/* Akhir reservasi: pakai endTime bila valid, selain itu time + durasi */
-function resEndMs(r){
+/* Akhir terjadwal reservasi: pakai endTime bila valid, selain itu time + durasi.
+   Tidak memperhitungkan pengosongan meja lebih awal oleh pelayan. */
+function resSchedEndMs(r){
   const s=resStart(r);
   if(!s)return null;
   const et=String((r&&r.endTime)||'');
@@ -59,6 +60,16 @@ function resEndMs(r){
   let mins=parseInt(r&&r.duration,10);
   if(!(mins>=15))mins=RES_DURATION_DEFAULT;
   return s.getTime()+mins*60000;
+}
+/* Akhir EFEKTIF reservasi. Bila pelayan sudah meng-Acc meja kosong lebih awal
+   (r.clearedAt), akhir maju ke waktu konfirmasi — sehingga status meja langsung
+   berubah jadi Tersedia dan bisa dipakai reservasi berikutnya. */
+function resEndMs(r){
+  const end=resSchedEndMs(r);
+  if(end==null)return null;
+  const cleared=Number(r&&r.clearedAt);
+  if(cleared>0&&cleared<end)return cleared;
+  return end;
 }
 const rangesOverlap=(aS,aE,bS,bE)=>aS<bE&&bS<aE;
 /* Cari reservasi aktif yang bentrok pada meja & rentang waktu tertentu */
@@ -365,6 +376,60 @@ function endOfResLabel(r){
   const e=resEndMs(r);
   return e?fmtHm(e):'';
 }
+
+/* ---------- Sub-workspace Pelayan: KOSONGKAN MEJA ----------
+   Tugas pelayan: meng-Acc meja yang sudah kosong SEBELUM durasi reservasi
+   habis. Saat di-Acc, r.clearedAt diisi waktu sekarang → resEndMs() maju ke
+   waktu itu, sehingga status meja langsung berubah menjadi "Tersedia" dan
+   reservasi berikutnya bisa memakai meja tersebut. Semua terhubung ke data
+   reservasi (bukan status meja manual). */
+function resTableBusyNow(r){
+  if(!r||r.status==='cancelled')return false;
+  const s=resStart(r);
+  if(!s)return false;
+  const now=Date.now();
+  const e=resEndMs(r);
+  return now>=s.getTime()&&now<e;
+}
+/* Sisa menit meja terpakai menurut durasi terjadwal (bukan efektif) */
+function resSchedRemainMin(r){
+  const s=resStart(r);
+  const e=resSchedEndMs(r);
+  if(!s||!e)return 0;
+  return Math.max(0,Math.round((e-Date.now())/60000));
+}
+function pelayanMejaPage(){
+  const all=sortedReservations().filter(r=>r&&r.status!=='cancelled');
+  const busy=all.filter(resTableBusyNow);                     /* meja sedang terisi */
+  const cleared=busy.filter(r=>Number(r.clearedAt)>0);        /* sudah di-Acc kosong */
+  const pending=busy.filter(r=>!(Number(r.clearedAt)>0));     /* menunggu Acc pelayan */
+  const usedNow=usedTables();
+  const free=Math.max(0,TABLE_COUNT-usedNow);
+  const card=r=>{
+    const rid=esc(String(r.id));
+    const cap=tableCapacity(r.table);
+    const already=Number(r.clearedAt)>0;
+    const remain=resSchedRemainMin(r);
+    const clearedAt=already?fmtHm(Number(r.clearedAt)):'';
+    return '<div class="booking-card'+(already?' is-cancelled':'')+'"><div>'+
+      '<b>Meja '+esc(String(r.table))+' · '+esc(r.name||'Tamu')+'</b>'+
+      '<small>'+esc(String(r.guests))+' orang (kap. '+cap+')<br>'+fmtDate(r.date)+' · '+esc(String(r.time||''))+' – '+esc(endOfResLabel(r)||'')+' · sisa durasi '+remain+' menit</small>'+
+      '</div><div class="booking-side">'+
+      (already
+        ?'<span class="status ready">Meja sudah kosong ✓</span><small class="booking-hist">Di-Acc pukul '+esc(clearedAt)+' — meja kembali Tersedia</small>'
+        :'<span class="status preparing">Terisi</span><button class="btn btn-primary" data-action="acc-clear-table:'+rid+'" title="Tandai meja sudah kosong sebelum durasi berakhir" aria-label="Acc meja '+esc(String(r.table))+' kosong">✓ Acc Meja Kosong</button>')+
+      '</div></div>';
+  };
+  const pendingGrid=pending.length?pending.map(card).join('')
+    :'<div class="empty-block"><span class="empty-icon">⌂</span><b>Tidak ada meja yang menunggu Acc</b><small>Semua meja terisi sudah di-Acc kosong, atau belum ada reservasi yang sedang berlangsung.</small></div>';
+  const clearedGrid=cleared.length?cleared.map(card).join('')
+    :'<div class="empty-block"><span class="empty-icon">✓</span><b>Belum ada Acc meja kosong</b><small>Meja yang Anda Acc kosong lebih awal akan muncul di sini beserta jam Acc-nya.</small></div>';
+  return `${heading('Kosongkan Meja','Tugas pelayan — <b>Acc meja yang sudah tamu tinggalkan</b> sebelum durasi reservasi habis. Begitu di-Acc, status meja otomatis berubah menjadi <b>Tersedia</b> dan siap dipakai reservasi berikutnya.','<button class="btn" data-action="refresh-pelayan"><span class="btn-icon">↻</span> Segarkan</button>')}
+  <div class="stats-grid">${stat('Perlu di-Acc',String(pending.length),'meja terisi menunggu konfirmasi','⌂',pending.length?'segera Acc':'lancar')}${stat('Sudah di-Acc',String(cleared.length),'dikosongkan lebih awal hari ini','✓',cleared.length?cleared.length+' meja':'belum ada')}${stat('Meja terisi',usedNow+' / '+TABLE_COUNT,'berdasarkan reservasi aktif','▦','')}${stat('Meja tersedia',free+' meja','siap untuk tamu berikutnya','◈','')}</div>
+  <div class="panel"><div class="panel-head"><div><div class="panel-title">Meja terisi · menunggu Acc</div><div class="panel-caption">Durasi meja masih berjalan — Acc bila tamu sudah pergi agar meja bebas lebih awal</div></div></div><div class="booking-grid">${pendingGrid}</div></div>
+  <div class="panel" style="margin-top:14px"><div class="panel-head"><div><div class="panel-title">Sudah di-Acc kosong</div><div class="panel-caption">Meja yang dikosongkan lebih awal — statusnya sudah kembali Tersedia</div></div><button class="link-btn" data-page="reservations">Semua reservasi →</button></div><div class="booking-grid">${clearedGrid}</div></div>`;
+}
+
 function reservationsPage(){
   promoteDueScheduled();
   const all=sortedReservations();
@@ -389,7 +454,7 @@ function reservationsPage(){
         : '<div class="res-next is-empty"><span class="res-next-icon">▦</span><div><b>Belum ada jadwal mendatang</b><small>Hitung mundur reservasi muncul di sini mengikuti tanggal &amp; jam yang dipilih pelanggan.</small></div></div>';
   const grid=active.length?active.map(bookingCard).join(''):emptyResBlock();
   const histPanel=cancelled.length
-    ?'<div class="panel" style="margin-top:14px"><div class="panel-head"><div><div class="panel-title">Riwayat reservasi</div><div class="panel-caption">Reservasi yang dibatalkan — <b>datanya tidak dihapus</b>, tetap tersimpan untuk arsip owner</div></div></div><div class="booking-grid">'+cancelled.map(bookingCard).join('')+'</div></div>'
+    ?'<div class="panel" style="margin-top:14px"><div class="panel-head"><div><div class="panel-title">Riwayat reservasi</div><div class="panel-caption">Reservasi yang dibatalkan — <b>datanya tidak dihapus</b>, tetap tersimpan untuk arsip owner</div></div><button class="btn btn-mini btn-mini-danger" data-action="clear-res-history" title="Hapus semua riwayat reservasi yang dibatalkan" aria-label="Hapus riwayat reservasi">🗑 Hapus Riwayat Reservasi</button></div><div class="booking-grid">'+cancelled.map(bookingCard).join('')+'</div></div>'
     :'';
   return `${heading('Reservasi meja','Buat jadwal booking lengkap dengan pilihan meja &amp; menu — jadwal bisa diubah, dan pembatalan hanya menandai status "Dibatalkan" tanpa menghapus data.','<button class="btn btn-primary" data-action="booking"><span class="btn-icon">＋</span> Reservasi baru</button>')}
   <div class="stats-grid">${stat('Total reservasi',active.length+' booking','Tersimpan & tersinkron dengan akun','▦','')}${stat('Menunggu DP',waiting+' booking','Link pembayaran dikirim','◷','')}${stat('DP diterima',confirmed+' booking','Terkonfirmasi otomatis','✓','')}${stat('Meja terpakai',usedNow+' meja','Sisa '+free+' dari '+TABLE_COUNT+' meja','⌂',Object.keys(usedToday).length+' meja terpakai hari ini')}</div>
@@ -1937,8 +2002,12 @@ function bookingCard(r){
   const range=esc(String(r.time||''))+(r.endTime?' – '+esc(String(r.endTime)):(r.duration?' – '+fmtHm((resStart(r)?resStart(r).getTime():0)+Number(r.duration||0)*60000):''));
   const actions=cancelled
     ?'<span class="status cancelled">Dibatalkan</span>'
-    :'<button class="btn btn-mini" data-action="edit-res:'+rid+'" title="Ubah reservasi — data lama tetap tersimpan di riwayat" aria-label="Ubah reservasi '+esc(r.name)+'">✎ Ubah</button>'+
-     '<button class="btn btn-mini btn-mini-danger" data-action="cancel-res:'+rid+'" title="Batalkan reservasi (tidak dihapus)" aria-label="Batalkan reservasi '+esc(r.name)+'">Batalkan</button>';
+    :r.status==='ready'
+      /* DP sudah diterima → reservasi terkonfirmasi, jadwal tidak bisa diubah
+         atau dibatalkan lagi (permintaan pemilik: tombol Ubah & Batalkan hilang) */
+      ?'<span class="booking-locked" title="DP sudah diterima — reservasi terkonfirmasi, jadwal tidak dapat diubah atau dibatalkan">🔒 Terkonfirmasi</span>'
+      :'<button class="btn btn-mini" data-action="edit-res:'+rid+'" title="Ubah reservasi — data lama tetap tersimpan di riwayat" aria-label="Ubah reservasi '+esc(r.name)+'">✎ Ubah</button>'+
+       '<button class="btn btn-mini btn-mini-danger" data-action="cancel-res:'+rid+'" title="Batalkan reservasi (tidak dihapus)" aria-label="Batalkan reservasi '+esc(r.name)+'">Batalkan</button>';
   return '<div class="booking-card'+(cancelled?' is-cancelled':'')+'"><div><b>'+esc(r.time)+' · '+esc(r.name)+'</b><small>'+esc(String(r.guests))+' orang · Meja '+esc(String(r.table))+' (kap. '+cap+' orang)<br>'+fmtDate(r.date)+' · '+range+'</small>'+bookingCountdown(r)+menu+hist+'</div><div class="booking-side">'+
     '<span class="status '+st.cls+'">'+st.label+'</span>'+acc+actions+'</div></div>';
 }
@@ -2336,6 +2405,9 @@ function askCancelRes(id){
 }
 function cancelRes(id){
   const r=store.reservations.find(x=>String(x.id)===String(id));
+  closeModal();   /* tutup dialog konfirmasi SEBELUM memproses — inilah perbaikan
+                     konfirmasi dobel: dahulu modal tidak pernah ditutup, sehingga
+                     setelah dikonfirmasi dialog yang sama terlihat muncul lagi. */
   if(!r){toast('Reservasi tidak ditemukan.');return}
   if(r.status==='cancelled'){toast('Reservasi '+r.name+' sudah pernah dibatalkan.');return}
   const backup=Object.assign({},r);
@@ -2354,6 +2426,50 @@ function cancelRes(id){
   }
   render('reservations');
   toast('Reservasi '+r.name+' ('+fmtDate(r.date)+') dibatalkan — data tetap tersimpan di riwayat.'+(orderBackups.length?' '+orderBackups.length+' pesanan dapur ikut dibatalkan.':''));
+}
+
+/* ---------- Hapus Riwayat Reservasi (permintaan pemilik) ----------
+   Menghapus permanen SEMUA reservasi ber-status "Dibatalkan" dari penyimpanan,
+   agar riwayat tidak menumpuk dan memberatkan sistem. Reservasi aktif
+   (menunggu DP / DP diterima) TIDAK ikut tersentuh. */
+function askClearResHistory(){
+  const cancelled=store.reservations.filter(r=>r&&r.status==='cancelled');
+  if(!cancelled.length){toast('Belum ada riwayat reservasi untuk dihapus.');return}
+  openModal('<div class="modal-head"><span class="provider-mark" style="--pm:#8a3324">🗑</span><div><b>Hapus '+cancelled.length+' riwayat reservasi?</b><small>Riwayat yang dibatalkan akan dihapus permanen</small></div><button class="modal-close" data-action="close-modal" aria-label="Tutup">×</button></div>'+
+    '<p class="modal-text">Sebanyak <b>'+cancelled.length+' reservasi</b> ber-status <b>Dibatalkan</b> akan dihapus permanen dari daftar riwayat agar tidak menumpuk. Reservasi aktif (menunggu DP / DP diterima) <b>tidak ikut terhapus</b>. Tindakan ini tidak bisa dibatalkan.</p>'+
+    '<div class="modal-actions"><button class="btn" data-action="close-modal">Kembali</button><button class="btn btn-danger" data-action="confirm-clear-res-history">Ya, hapus riwayat</button></div>');
+}
+function clearResHistory(){
+  closeModal();
+  const before=store.reservations.slice();
+  const removed=before.filter(r=>r&&r.status==='cancelled');
+  if(!removed.length){toast('Tidak ada riwayat reservasi untuk dihapus.');return}
+  store.reservations=before.filter(r=>!(r&&r.status==='cancelled'));
+  if(!saveStore()){store.reservations=before;toast('Gagal menghapus riwayat — data dipulihkan.');return}
+  render('reservations');
+  toast(removed.length+' riwayat reservasi dihapus permanen.');
+}
+
+/* ---------- Acc meja kosong lebih awal (sub-workspace Pelayan) ----------
+   Menyetel r.clearedAt = waktu sekarang. Karena resEndMs() memakai clearedAt
+   bila lebih awal, status meja ikut berubah: panel "Status meja" (di halaman
+   Reservasi) langsung menampilkan meja sebagai Tersedia, dan meja bisa dipakai
+   reservasi baru tanpa bentrok. */
+function accClearTable(id){
+  const r=store.reservations.find(x=>String(x.id)===String(id));
+  if(!r){toast('Reservasi tidak ditemukan.');return}
+  if(r.status==='cancelled'){toast('Reservasi '+r.name+' sudah dibatalkan.');return}
+  if(!resTableBusyNow(r)){toast('Meja '+r.table+' tidak sedang terisi saat ini.');return}
+  if(Number(r.clearedAt)>0){toast('Meja '+r.table+' sudah pernah di-Acc kosong.');return}
+  const backup=r.clearedAt;
+  const now=Date.now();
+  r.clearedAt=now;
+  const hist=Array.isArray(r.history)?r.history.slice():[];
+  hist.push({at:now,note:'Meja '+r.table+' di-Acc kosong lebih awal oleh pelayan'});
+  r.history=hist.slice(-20);r.updatedAt=now;
+  if(!saveStore()){r.clearedAt=backup;r.history=hist.slice(0,-1);toast('Gagal menyimpan — Acc meja dibatalkan.');return}
+  render('pelayan-meja');
+  toast('Meja '+r.table+' ('+r.name+') di-Acc kosong — status meja kembali Tersedia.');
 }
 
 /* ---------- Tautan akun (simulasi OAuth) ---------- */
@@ -2573,7 +2689,7 @@ function syncHash(page){
   }catch(e){}
 }
 
-const renderers={overview:dashboard,orders:ordersPage,kitchen:kitchenPage,pelayan:pelayanPage,reservations:reservationsPage,menu:menuPage,inventory:inventoryPage,recipes:recipesPage,procurement:procurementPage,finance:financePage,reports:reportsPage,settings:settingsPage};
+const renderers={overview:dashboard,orders:ordersPage,kitchen:kitchenPage,pelayan:pelayanPage,'pelayan-meja':pelayanMejaPage,reservations:reservationsPage,menu:menuPage,inventory:inventoryPage,recipes:recipesPage,procurement:procurementPage,finance:financePage,reports:reportsPage,settings:settingsPage};
 function render(page='overview',keepScroll){
   const y=(typeof window!=='undefined'&&window.scrollY)||0;
   currentPage=page;
@@ -2658,6 +2774,7 @@ const PERM_ACTION_LABEL={read:'membuka',create:'menambah',update:'mengubah',dele
 const ACTION_PERM={
   'booking':['reservations','create'],'save-res':['reservations','create'],'res-confirm':['reservations','create'],'res-commit':['reservations','create'],
   'edit-res:':['reservations','update'],'toggle-dp:':['reservations','update'],'cancel-res:':['reservations','update'],'confirm-cancel-res:':['reservations','update'],'del-res:':['reservations','update'],
+  'clear-res-history':['reservations','delete'],'confirm-clear-res-history':['reservations','delete'],'acc-clear-table:':['reservations','update'],
   'add-menu':['menu','create'],'save-menu:':['menu','update'],'edit-menu:':['menu','update'],'delete-menu:':['menu','delete'],
   'add-variant:':['menu','update'],'pick-variant:':['menu','create'],'remove-menu-image':['menu','update'],
   'start-prep:':['orders','update'],'mark-ready:':['orders','update'],'cancel-order:':['orders','update'],'confirm-cancel-order:':['orders','update'],
@@ -2704,6 +2821,9 @@ document.addEventListener('click',e=>{
   if(action.startsWith('edit-res:')){openResForm(arg);return}
   if(action.startsWith('cancel-res:')){askCancelRes(arg);return}
   if(action.startsWith('confirm-cancel-res:')){cancelRes(arg);return}
+  if(action==='clear-res-history'){askClearResHistory();return}
+  if(action==='confirm-clear-res-history'){clearResHistory();return}
+  if(action.startsWith('acc-clear-table:')){accClearTable(arg);return}
   if(action.startsWith('del-res:')){askCancelRes(arg);return}
   if(action.startsWith('res-menu-inc:')){resMenuInc(arg);return}
   if(action.startsWith('res-menu-dec:')){resMenuDec(arg);return}

@@ -15,7 +15,7 @@ window.RasaRoles = (function () {
   /* Halaman lama -> modul permission. Halaman baru memakai nama modul. */
   const PAGE_MODULE = {
     overview: 'overview', orders: 'orders', kitchen: 'kitchen',
-    pelayan: 'antar',
+    pelayan: 'antar', 'pelayan-meja': 'antar',
     reservations: 'reservations', menu: 'menu', inventory: 'inventory',
     procurement: 'procurement', finance: 'finance', reports: 'reports',
     settings: 'settings'

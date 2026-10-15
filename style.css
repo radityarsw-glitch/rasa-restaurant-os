@@ -2570,6 +2570,12 @@ html[data-theme="midnight"] .res-count.past{
 .booking-menu .booking-total b{color:var(--ink);font-weight:800}
 .booking-menu .booking-total.dim b,.booking-menu .booking-total.dim span{color:var(--muted)}
 .booking-hist{display:block;margin-top:6px;font-size:8px;color:var(--muted-2);font-style:italic}
+/* Indikator "Terkonfirmasi" — menggantikan tombol Ubah/Batalkan saat DP diterima */
+.booking-locked{
+  display:inline-flex;align-items:center;gap:4px;margin-bottom:2px;
+  padding:5px 9px;border-radius:9px;font-size:8.5px;font-weight:800;
+  color:var(--gold-deep);background:var(--gold-tint);
+  border:1px solid rgba(var(--gold-rgb),.42);white-space:nowrap}
 .booking-side .status{margin-bottom:2px}
 .btn-mini{
   padding:6px 10px!important;font-size:9px!important;font-weight:700!important;
