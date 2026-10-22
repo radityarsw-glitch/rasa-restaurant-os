@@ -85,10 +85,35 @@ Yang terjadi begitu Owner menyimpan perubahan — **tanpa staf perlu login ulang
 - **Tautan langsung** (`/#reservations`, `/#inventory`, …) tidak bisa dipakai menyiasati: halaman diganti layar **“Anda tidak punya izin”** yang menjelaskan modul, peran, dan jumlah wewenang aktif, plus tombol kembali ke Ringkasan. Tautan yang tidak dikenal menampilkan layar 404 terpisah.
 - **Data TIDAK PERNAH dihapus maupun dipotong.** Pencabutan wewenang hanya membatasi *akses*: seluruh data restoran tetap tersimpan utuh di server dan tetap ikut disinkron ke perangkat staf, jadi staf tidak “terputus” dari data Owner. Begitu wewenang dikembalikan, menu dan halaman langsung terbuka kembali tanpa kehilangan apa pun.
 - **Tulis ditolak server:** `PUT /api/data` untuk modul tanpa izin `update` dikembalikan sebagai `denied` — klien hanya mengirim key yang memang boleh ditulis, jadi tidak ada toast penolakan yang tidak perlu. Key pesanan ditulis bila staf berwewenang **Pesanan** *atau* **Antar Ke Meja** (keduanya izin alternatif untuk aksi antar).
-- **API lain ikut dikunci:** `GET /api/permissions`, `GET/POST/PUT/DELETE /api/staff` menolak staf tanpa izin (403).
+- **API lain ikut dikunci:** `GET /api/permissions`, `GET/POST/PUT/DELETE /api/staff`, serta `GET/POST/DELETE /api/invitations` (undangan staf) menolak staf tanpa izin (403).
 - **Dipantau terus:** klien membaca ulang izin dari `/api/auth/me` setiap 20 detik, saat jendela kembali aktif/fokus, dan saat menerima 403 — begitu izin berubah, menu dan layar izin menyesuaikan sendiri; perubahan juga muncul sebagai notifikasi “Owner mencabut wewenang … (data tetap tersimpan)”.
 
 Izin yang sama tetap ditegakkan di backend (`server/permissions.js` + pemeriksaan di tiap endpoint), jadi menyembunyikan menu di sisi klien bukan satu-satunya pengaman.
+
+## Undangan staf lewat email (Gmail)
+
+Owner (dan manager dengan izin **Staf**) bisa mengundang calon staf lewat **alamat Gmail** tanpa membuat akun lebih dulu. Undangan disimpan di tabel `staff_invitations` berstatus `pending`, `accepted`, atau `rejected`.
+
+**Alur lengkap:**
+
+1. **Owner mengundang** — di halaman **Pengaturan**, panel **Undangan staf (Gmail)**: isi alamat Gmail, pilih peran/jabatan (Owner, Manager, Kasir, Kitchen, Waiter), opsional catatan, lalu **Kirim undangan**. Bila `RESEND_API_KEY` terpasang, undangan juga dikirim sebagai email; tanpa itu undangan tetap tampil sebagai notifikasi di aplikasi.
+2. **Calon staf melihat notifikasi** — begitu akun dengan alamat Gmail yang diundang masuk, aplikasi menampilkan notifikasi: *"Anda telah diundang untuk menjadi Staf di **[Nama Bisnis]** sebagai **[Nama Peran]**."* dengan tombol **Terima** dan **Tolak**. Undangan yang sama juga muncul di lonceng/Alert Center dan di halaman `#undangan`.
+3. **Bila akun belum ada** — undangan **tetap tersimpan** (`pending`) dan otomatis tampil setelah calon staf mendaftar + masuk dengan email yang sama.
+4. **Terima** — status menjadi `accepted`, akun langsung bergabung ke restoran pengundang dengan peran yang dipilih Owner (outlet utama, status aktif), izin mengikut sistem role/permission yang berlaku, dan wewenang khusus restoran lama tidak ikut terbawa. Sesi tidak perlu login ulang — izin dibaca ulang backend setiap request.
+5. **Tolak** — status menjadi `rejected`; **tidak ada** keanggotaan atau akses yang dibuat.
+6. **Batalkan** — Owner bisa membatalkan undangan `pending` (tercatat di audit log); undangan baru bisa dikirim ulang untuk email yang sama.
+
+**Keamanan yang ditegakkan backend (`server/invites.js`):**
+
+- Hanya pemilik alamat email undangan yang boleh menerima/menolak (email sesi harus cocok — selain itu `403`).
+- Undangan yang sudah `accepted`/`rejected` tidak bisa diproses ulang (`409`) — klaim status memakai `UPDATE … WHERE status='pending'` dan dicek lewat jumlah baris yang berubah, jadi proses ganda tidak pernah menggandakan keanggotaan.
+- Keanggotaan staf **tidak pernah dibuat sebelum** undangan diterima.
+- Pembuatan/pembatalan undangan memakai izin modul `staff` (`create`/`read`/`delete`) yang sama dengan panel staf — dicek di `server/worker.js` dan divalidasi ulang tiap endpoint.
+- Satu undangan `pending` per email per restoran (indeks unik parsial); undangan ke email yang sudah jadi staf ditolak `409`.
+- Alamat email calon staf tidak pernah bocor ke akun lain: `GET /api/invitations/mine` hanya mengembalikan undangan yang cocok dengan email sesi aktif.
+- Seluruh alur (`staff.invite.create/accept/reject/revoke/denied`) tercatat di **audit log**.
+
+**Endpoint baru:** `POST /api/invitations`, `GET /api/invitations`, `DELETE /api/invitations/:id`, `GET /api/invitations/mine`, `POST /api/invitations/:id/accept`, `POST /api/invitations/:id/reject`.
 
 ## Alur penyajian: dapur → antar ke meja
 
@@ -112,7 +137,7 @@ Halaman **Antar Ke Meja** menampilkan dua kolom sederhana: *Siap diantar* dan *S
 ## Deploy ke Cloudflare
 
 ```bat
-:: sekali saja bila skema database berubah (menambah tabel user_perms)
+:: sekali saja bila skema database berubah (mis. menambah tabel user_perms / staff_invitations)
 npx.cmd wrangler d1 execute rasa-restaurant-os-db --remote --file=server\schema.sql
 
 npx.cmd wrangler deploy
@@ -142,12 +167,13 @@ git push -u origin main                 :: GitHub Actions otomatis build & deplo
 
 ### Pengujian otomatis
 
-Empat skrip pengujian dijalankan terhadap `wrangler dev --port 8790 --local` (D1 lokal):
+Lima skrip pengujian dijalankan terhadap `wrangler dev --port 8790 --local` (D1 lokal):
 
 - `.uji-permisi.ps1` — 13 skenario API permission: cabut/kembalikan wewenang per staf (tanpa menyentuh staf lain), validasi ketat modul & aksi, data tetap utuh, tulis & API permission ditolak, preset per role berlaku langsung, serta modul **Antar Ke Meja** (dipilih di Wewenang) sebagai izin alternatif menulis pesanan.
 - `.uji-frontend.ps1` — uji headless Chrome: DOM badge status jadwal, foto `object-fit: contain`, menu/halaman ditolak saat wewenang dicabut, notifikasi pencabutan langsung saat halaman terbuka (poll izin 20 detik), serta data tetap terkirim ke staf yang dicabut.
 - `.uji-kontras.ps1` — mengukur rasio kontras label tombol terhadap latarnya di 6 tema (66 pemeriksaan = 6 tema x 11 jenis tombol, ambang WCAG AA 4.5:1) sekaligus memastikan tulisan tombol selalu berlawanan dengan warna latarnya.
 - `.uji-staf.ps1` — uji headless Chrome dengan sesi login sungguhan: panel Staf &amp; role tampil lengkap (Nonaktifkan, Wewenang, Hapus, Tambah staf), warna keempat tombol staf diukur di 6 tema (24 pemeriksaan, ambang 4.5:1), serta modal **Wewenang** benar-benar terbuka dan memuat centang **Antar Ke Meja** sesuai preset role.
+- `.uji-undangan.ps1` — 25+ pemeriksaan alur **undangan staf via Gmail**: undangan dibuat `pending` dengan peran benar, validasi email/role/duplikat, undangan orang lain tidak bocor di `/mine`, notifikasi tampil setelah calon staf mendaftar dengan email yang diundang, pemilik lain ditolak (403), **Terima** menjadikan staf aktif dengan izin role waiter, **Tolak** tanpa keanggotaan, proses ganda ditolak (409), pembatalan oleh owner, dan seluruh alur tercatat di audit log.
 
 Folder aset yang disajikan `wrangler dev` bisa dioverride lewat variabel lingkungan `RASA_ASSETS` (default: `%TEMP%\rasa-assets`).
 

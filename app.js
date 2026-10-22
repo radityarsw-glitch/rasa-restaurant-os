@@ -2784,6 +2784,7 @@ const ACTION_PERM={
   'recipe-add':['recipes','create'],'recipe-edit:':['recipes','update'],'recipe-save':['recipes','update'],'recipe-remove:':['recipes','delete'],
   'journal-add':['accounting','create'],'journal-save':['accounting','create'],'journal-line-add':['accounting','create'],'export-journal':['accounting','export'],
   'staff-add':['staff','create'],'staff-form-toggle':['staff','create'],'staff-toggle:':['staff','update'],'staff-del:':['staff','delete'],'staff-del-confirm:':['staff','delete'],'staff-perms:':['permissions','update'],
+  'invite-send':['staff','create'],'invite-form-toggle':['staff','create'],'invite-revoke:':['staff','delete'],'invite-revoke-confirm:':['staff','delete'],
   'reset-data':['settings','delete']
 };
 function actionAllowed(action){

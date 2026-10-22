@@ -12,13 +12,15 @@
 window.RasaRoles = (function () {
   const $ = id => document.getElementById(id);
 
-  /* Halaman lama -> modul permission. Halaman baru memakai nama modul. */
+  /* Halaman lama -> modul permission. Halaman baru memakai nama modul.
+     Halaman "undangan" (undangan staf milik email sendiri) memakai izin
+     overview karena berlaku untuk semua role yang sedang masuk. */
   const PAGE_MODULE = {
     overview: 'overview', orders: 'orders', kitchen: 'kitchen',
     pelayan: 'antar', 'pelayan-meja': 'clear-table',
     reservations: 'reservations', menu: 'menu', inventory: 'inventory',
     procurement: 'procurement', finance: 'finance', reports: 'reports',
-    settings: 'settings'
+    settings: 'settings', undangan: 'overview'
   };
 
   const MODULE_LABELS = [

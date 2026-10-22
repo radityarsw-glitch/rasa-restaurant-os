@@ -11,6 +11,7 @@ import {
 } from './auth.js';
 import { getData, putData, rotateInvite } from './data.js';
 import { listAudit, writeAudit } from './audit.js';
+import { createInvite, listInvites, revokeInvite, myInvites, respondInvite } from './invites.js';
 
 const CORS = {
   'access-control-allow-origin': '*',
@@ -58,6 +59,32 @@ async function route(req, env, url) {
     const a = await requireAuth(req, env);
     if (!Array.isArray(a.perms.staff) || a.perms.staff.indexOf('delete') < 0) return withCors(err('Tidak boleh menghapus staf.', 403));
     return withCors(await removeStaff(req, env, a, staffDel[1]));
+  }
+
+  /* --- undangan staf lewat email (Gmail) --- */
+  if (key === 'GET /api/invitations') {
+    const a = await requireAuth(req, env);
+    if (!Array.isArray(a.perms.staff) || a.perms.staff.indexOf('read') < 0) return withCors(err('Tidak boleh melihat daftar undangan staf.', 403));
+    return withCors(await listInvites(req, env, a));
+  }
+  if (key === 'POST /api/invitations') {
+    const a = await requireAuth(req, env);
+    if (!Array.isArray(a.perms.staff) || a.perms.staff.indexOf('create') < 0) return withCors(err('Tidak boleh mengundang staf.', 403));
+    return withCors(await createInvite(req, env, a));
+  }
+  /* undangan milik akun yang sedang masuk — selalu dicek server:
+     email sesi harus sama dengan email undangan */
+  if (key === 'GET /api/invitations/mine') return withCors(await myInvites(req, env));
+  const invDel = /^DELETE \/api\/invitations\/([^/]+)$/.exec(key);
+  if (invDel) {
+    const a = await requireAuth(req, env);
+    if (!Array.isArray(a.perms.staff) || a.perms.staff.indexOf('delete') < 0) return withCors(err('Tidak boleh membatalkan undangan staf.', 403));
+    return withCors(await revokeInvite(req, env, a, invDel[1]));
+  }
+  const invRespond = /^POST \/api\/invitations\/([^/]+)\/(accept|reject)$/.exec(key);
+  if (invRespond) {
+    const a = await requireAuth(req, env);
+    return withCors(await respondInvite(req, env, a, invRespond[1], invRespond[2]));
   }
 
   /* --- permission --- */

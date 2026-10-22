@@ -137,3 +137,26 @@ CREATE TABLE IF NOT EXISTS otp_throttle (
   window_at  INTEGER NOT NULL,
   count      INTEGER NOT NULL DEFAULT 0
 );
+
+-- Undangan staf lewat email (Gmail): owner/manager mengundang calon staf
+-- dengan peran tertentu. Undangan berstatus `pending` sampai pemilik
+-- alamat email yang sama menekan Terima / Tolak di aplikasi.
+-- Keanggotaan staf TIDAK dibuat sebelum undangan diterima.
+CREATE TABLE IF NOT EXISTS staff_invitations (
+  id              TEXT PRIMARY KEY,
+  restaurant_id   TEXT NOT NULL,
+  email           TEXT NOT NULL,
+  role            TEXT NOT NULL DEFAULT 'waiter',
+  status          TEXT NOT NULL DEFAULT 'pending',   -- pending | accepted | rejected
+  invited_by      TEXT NOT NULL DEFAULT '',
+  invited_by_name TEXT NOT NULL DEFAULT '',
+  note            TEXT NOT NULL DEFAULT '',
+  created_at      INTEGER NOT NULL,
+  responded_at    INTEGER NOT NULL DEFAULT 0
+);
+
+-- satu undangan pending per email per restoran (mencegah undangan dobel)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_invites_pending
+  ON staff_invitations(restaurant_id, email) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS idx_invites_email ON staff_invitations(email, status);
+CREATE INDEX IF NOT EXISTS idx_invites_rest ON staff_invitations(restaurant_id, created_at);
