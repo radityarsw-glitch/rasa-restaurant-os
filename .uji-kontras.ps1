@@ -146,6 +146,8 @@ Ok ('{0} pemeriksaan ({1} tema x {2} tombol), kontras terendah {3}:1' -f $rows.C
 if ($min -ge 4.5) { Ok 'semua label tombol memenuhi WCAG AA (>= 4.5:1)' }
 else { Fail ('kontras terendah di bawah 4.5:1') }
 
+Remove-Item (Join-Path $assets 'test-kontras.html') -Force -ErrorAction SilentlyContinue
+
 Write-Host ''
 if ($failed -eq 0) { Write-Host 'HASIL: SEMUA LULUS' -ForegroundColor Green; exit 0 }
 Write-Host ("HASIL: " + $failed + " GAGAL") -ForegroundColor Red; exit 1

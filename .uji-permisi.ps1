@@ -74,6 +74,11 @@ $p.matrix.kitchen.PSObject.Properties | ForEach-Object { $eff[$_.Name] = @($_.Va
 
 Write-Host "== 6. owner MENCABUT wewenang Reservasi dari staf itu =="
 $eff['reservations'] = @()
+# Sejak modul "Kosongkan Meja" menjadi entri terpisah, izin clear-table JUGA
+# mengizinkan tulisan key reservasi (alur acc & kosongkan meja di workstation
+# pelayan). Cabut keduanya supaya benar-benar tidak ada jalan menulis
+# reservasi bagi staf ini — inilah yang diuji pada blok "staf coba MENULIS".
+$eff['clear-table'] = @()
 $users = @{}; $users[$kuid] = $eff
 # kontrak baru: cukup kirim wewenang staf yang diubah (tanpa matriks role),
 # dan hanya baris staf itu yang boleh diganti oleh server

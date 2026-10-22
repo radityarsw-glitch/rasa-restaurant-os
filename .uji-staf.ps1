@@ -183,7 +183,7 @@ if (-not $m3 -or $m3 -eq 'NO_BUTTON' -or $m3 -eq 'NO_MODAL' -or $m3 -eq 'pending
     if ($j.antar -eq $true -and ($j.antarText -like '*Antar Ke Meja*')) { Ok 'centang "Antar Ke Meja" tampil & tercentang sesuai preset' } else { Fail 'modul Antar Ke Meja tidak ada di modal Wewenang' }
   }
 }
-Remove-Item (Join-Path $assets 'test-staff-login.html'),(Join-Path $assets 'test-staff-modal.html') -Force -ErrorAction SilentlyContinue
+Remove-Item (Join-Path $assets 'test-staff-login.html'),(Join-Path $assets 'test-staff-modal.html'),(Join-Path $assets 'test-staff-warna.html') -Force -ErrorAction SilentlyContinue
 
 Write-Host ''
 if ($failed -eq 0) { Write-Host 'HASIL: SEMUA LULUS' -ForegroundColor Green; exit 0 }

@@ -117,7 +117,7 @@ export const DEFAULT_MATRIX = {
     antar:       M(true, ['update']),
     'clear-table': M(true, ['update']),
     tables:      M(true, ['update']),
-    reservations:M(true, ['create']),
+    reservations:M(true, ['create', 'update']),
     menu:        M(true),
     inventory:   M(false),
     recipes:     M(false),

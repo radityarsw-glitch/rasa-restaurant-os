@@ -112,7 +112,7 @@ function hasOperations(){return historyOrders().length>0||products.length>0||(st
 /* Panel sambutan — hanya tampil selama semua data masih kosong */
 function onboardPanel(){
   if(hasOperations())return '';
-  return `<div class="panel onboard-panel"><div class="panel-head"><div><div class="panel-title">Restoran Anda masih baru</div><div class="panel-caption">Semua data masih kosong — mulai dari langkah pertama. Data yang Anda isi tersimpan otomatis dan tersinkron dengan akun email Anda — bisa dibuka lagi dari perangkat lain yang login dengan email sama.</div></div></div><div class="onboard-steps"><button class="onboard-step" data-page="settings"><b>1</b> Atur nama &amp; lokasi</button><button class="onboard-step" data-page="menu"><b>2</b> Tambah menu pertama</button><button class="onboard-step" data-action="booking"><b>3</b> Buat reservasi</button><button class="onboard-step" data-action="toggle-open"><b>4</b> Status buka / tutup</button></div></div>`;
+  return `<div class="panel onboard-panel"><div class="panel-head"><div><div class="panel-title">Restoran Anda masih baru</div><div class="panel-caption">Semua data masih kosong — mulai dari langkah pertama. Data yang Anda isi tersimpan otomatis dan tersinkron dengan akun email Anda — bisa dibuka lagi dari perangkat lain yang login dengan email sama.</div></div></div><div class="onboard-steps"><button class="onboard-step" data-page="settings"><b>1</b> Atur nama &amp; lokasi</button><button class="onboard-step" data-page="menu"><b>2</b> Tambah menu pertama</button>${window.canPerm('reservations','create')?'<button class="onboard-step" data-action="booking"><b>3</b> Buat reservasi</button>':''}<button class="onboard-step" data-action="toggle-open"><b>4</b> Status buka / tutup</button></div></div>`;
 }
 function heading(title,subtitle,action='') {return `<div class="page-heading"><div><div class="eyebrow">${(store.restaurantName||'Restoran').toUpperCase()} · ${DATE_LABEL}</div><h1>${title}</h1><div class="subtitle">${subtitle}</div></div><div class="heading-actions"><button class="btn date-btn" data-action="date"><span class="btn-icon">▦</span> Hari ini⌄</button>${action}</div></div>`}
 function stat(label,value,foot,icon,trend='') {return `<div class="stat-card"><div class="stat-top">${label}<span class="stat-icon">${icon}</span></div><div class="stat-value">${value}</div><div class="stat-foot"><span class="trend ${trend.includes('−')?'warn':''}">${trend}</span>${foot}</div></div>`}
@@ -227,7 +227,7 @@ function dashboard(){
   const resCount=(store.reservations||[]).length;   /* ikut tersinkron penuh; wewenang dicabut = akses ditutup, data tidak dihapus */
   const used=usedTables();
   const pct=Math.round(used/TABLE_COUNT*100);
-  return `${heading(greeting(),'Berikut ringkasan operasional restoran Anda hari ini — ikut berubah mengikuti data pesanan, menu, dan reservasi. Semua perubahan tersimpan otomatis.','<button class="btn" data-action="refresh-dash"><span class="btn-icon">↻</span> Segarkan</button><button class="btn btn-danger" data-action="reset-data"><span class="btn-icon">↺</span> Reset Data</button>')}
+  return `${heading(greeting(),'Berikut ringkasan operasional restoran Anda hari ini — ikut berubah mengikuti data pesanan, menu, dan reservasi. Semua perubahan tersimpan otomatis.','<button class="btn" data-action="refresh-dash"><span class="btn-icon">↻</span> Segarkan</button>'+(window.canPerm('settings','delete')?'<button class="btn btn-danger" data-action="reset-data"><span class="btn-icon">↺</span> Reset Data</button>':''))}
   <div class="stats-grid">
     ${stat('Penjualan hari ini',money(sales),'dari '+live.length+' pesanan tercatat','↗',live.length?'↗ '+live.length+' transaksi':'—')}
     ${stat('Pesanan masuk',String(orders.length),g[0].count+' QR · '+g[1].count+' POS · '+resCount+' reservasi','▤',orders.filter(o=>o.cls==='preparing').length+' perlu diproses')}
@@ -247,7 +247,7 @@ function ordersPage(){
   const sched=orders.filter(o=>o.cls==='scheduled').length;
   const delivering=orders.filter(o=>o.cls==='delivering').length;
   const served=orders.filter(o=>o.cls==='served').length;
-  return `${heading('Semua pesanan','Pantau dan kelola pesanan dari QR self-service dan POS.','<button class="btn" data-action="clear-orders"><span class="btn-icon">🗑</span> Kosongkan</button>')}
+  return `${heading('Semua pesanan','Pantau dan kelola pesanan dari QR self-service dan POS.',(window.canPerm('orders','delete')?'<button class="btn" data-action="clear-orders"><span class="btn-icon">🗑</span> Kosongkan</button>':''))}
   <div class="stats-grid">${stat('Semua pesanan',String(total),'Tersinkron dengan akun email','▤','')}${stat('Perlu diproses',String(prep),'Masuk ke antrean dapur','♨','')}${stat('Siap disajikan',String(ready),'Menunggu diantar ke meja','✓','')}${stat('Sudah dibayar',String(paid),'Pembayaran lunas','◷','')}</div>
   <div class="filter-row"><button class="filter-chip selected" data-filter="Semua">Semua <b>${total}</b></button><button class="filter-chip" data-filter="Diproses">Diproses <b>${prep}</b></button><button class="filter-chip" data-filter="Siap">Siap <b>${ready}</b></button><button class="filter-chip" data-filter="Diantar">Diantar <b>${delivering}</b></button><button class="filter-chip" data-filter="Tersaji">Tersaji <b>${served}</b></button><button class="filter-chip" data-filter="Dibayar">Dibayar <b>${paid}</b></button><button class="filter-chip" data-filter="Dibatalkan">Dibatalkan <b>${cancelled}</b></button><button class="filter-chip" data-filter="Terjadwal">Terjadwal <b>${sched}</b></button></div>${orderTable(orders)}</div>`
 }
@@ -300,7 +300,7 @@ function kitchenPage(){
     '<span class="ticket-status">'+(btn||'<span class="status ready">Menunggu diantar</span>')+ageTag(o)+'</span></div>';
   const col=(title,list,btnFn,empty)=>'<div class="kitchen-column"><h3>'+title+' <span class="nav-count">'+list.length+'</span></h3>'+
     (list.length?list.map(o=>ticket(o,btnFn?btnFn(o):'')).join(''):'<div class="empty-state">'+empty+'</div>')+'</div>';
-  return `${heading('Kitchen display system','Pesanan reservasi muncul di kolom <b>Terjadwal</b> dan otomatis naik ke <b>Baru masuk</b> saat jam reservasi tiba. Setelah ditandai <b>Siap</b>, pesanan langsung muncul di workspace <b>Antar Ke Meja</b> untuk diambil pelayan dan diantar ke meja.','<button class="btn" data-action="clear-orders"><span class="btn-icon">🗑</span> Kosongkan</button><button class="btn" data-action="refresh-kitchen">↻ Segarkan</button>')}
+  return `${heading('Kitchen display system','Pesanan reservasi muncul di kolom <b>Terjadwal</b> dan otomatis naik ke <b>Baru masuk</b> saat jam reservasi tiba. Setelah ditandai <b>Siap</b>, pesanan langsung muncul di workspace <b>Antar Ke Meja</b> untuk diambil pelayan dan diantar ke meja.',(window.canPerm('orders','delete')?'<button class="btn" data-action="clear-orders"><span class="btn-icon">🗑</span> Kosongkan</button>':'')+'<button class="btn" data-action="refresh-kitchen">↻ Segarkan</button>')}
   <div class="kitchen-board">
     ${col('Terjadwal (reservasi)',scheduled,o=>'<button class="btn btn-primary" data-action="start-prep:'+esc(String(o.id))+'">Mulai menyiapkan →</button>','Tidak ada pesanan terjadwal.')}
     ${col('Baru masuk',incoming,o=>'<button class="btn btn-primary" data-action="start-prep:'+esc(String(o.id))+'">Mulai menyiapkan →</button>','Belum ada pesanan baru.')}
@@ -454,9 +454,9 @@ function reservationsPage(){
         : '<div class="res-next is-empty"><span class="res-next-icon">▦</span><div><b>Belum ada jadwal mendatang</b><small>Hitung mundur reservasi muncul di sini mengikuti tanggal &amp; jam yang dipilih pelanggan.</small></div></div>';
   const grid=active.length?active.map(bookingCard).join(''):emptyResBlock();
   const histPanel=cancelled.length
-    ?'<div class="panel" style="margin-top:14px"><div class="panel-head"><div><div class="panel-title">Riwayat reservasi</div><div class="panel-caption">Reservasi yang dibatalkan — <b>datanya tidak dihapus</b>, tetap tersimpan untuk arsip owner</div></div><button class="btn btn-mini btn-mini-danger" data-action="clear-res-history" title="Hapus semua riwayat reservasi yang dibatalkan" aria-label="Hapus riwayat reservasi">🗑 Hapus Riwayat Reservasi</button></div><div class="booking-grid">'+cancelled.map(bookingCard).join('')+'</div></div>'
+    ?'<div class="panel" style="margin-top:14px"><div class="panel-head"><div><div class="panel-title">Riwayat reservasi</div><div class="panel-caption">Reservasi yang dibatalkan — <b>datanya tidak dihapus</b>, tetap tersimpan untuk arsip owner</div></div>'+(window.canPerm('reservations','delete')?'<button class="btn btn-mini btn-mini-danger" data-action="clear-res-history" title="Hapus semua riwayat reservasi yang dibatalkan" aria-label="Hapus riwayat reservasi">🗑 Hapus Riwayat Reservasi</button>':'')+'</div><div class="booking-grid">'+cancelled.map(bookingCard).join('')+'</div></div>'
     :'';
-  return `${heading('Reservasi meja','Buat jadwal booking lengkap dengan pilihan meja &amp; menu — jadwal bisa diubah, dan pembatalan hanya menandai status "Dibatalkan" tanpa menghapus data.','<button class="btn btn-primary" data-action="booking"><span class="btn-icon">＋</span> Reservasi baru</button>')}
+  return `${heading('Reservasi meja','Buat jadwal booking lengkap dengan pilihan meja &amp; menu — jadwal bisa diubah, dan pembatalan hanya menandai status "Dibatalkan" tanpa menghapus data.',(window.canPerm('reservations','create')?'<button class="btn btn-primary" data-action="booking"><span class="btn-icon">＋</span> Reservasi baru</button>':''))}
   <div class="stats-grid">${stat('Total reservasi',active.length+' booking','Tersimpan & tersinkron dengan akun','▦','')}${stat('Menunggu DP',waiting+' booking','Link pembayaran dikirim','◷','')}${stat('DP diterima',confirmed+' booking','Terkonfirmasi otomatis','✓','')}${stat('Meja terpakai',usedNow+' meja','Sisa '+free+' dari '+TABLE_COUNT+' meja','⌂',Object.keys(usedToday).length+' meja terpakai hari ini')}</div>
   ${tableStatusPanel()}
   <div class="panel"><div class="panel-head"><div><div class="panel-title">Jadwal reservasi</div><div class="panel-caption">Urut berdasarkan tanggal &amp; jam · hitung mundur <b>Dimulai dalam …</b> berdetak tiap detik, lalu otomatis berganti jadi <b>status pesanan</b> (disiapkan dapur / sudah disajikan) begitu pesanan mulai diolah</div></div><button class="btn date-btn" data-action="date">▦ ${active.length} jadwal</button></div>${nextStrip}<div class="booking-grid">${grid}</div></div>
@@ -464,7 +464,7 @@ function reservationsPage(){
 }
 /* Empty state reservasi (poin 13): informasi + tombol, bukan halaman kosong */
 function emptyResBlock(){
-  return '<div class="empty-block"><span class="empty-icon">▦</span><b>Belum ada reservasi</b><small>Belum ada reservasi yang dibuat untuk tanggal ini. Buat jadwal baru agar meja dan dapur bisa disiapkan lebih awal.</small><button class="btn btn-primary" data-action="booking"><span class="btn-icon">＋</span> Tambah Reservasi</button></div>';
+  return '<div class="empty-block"><span class="empty-icon">▦</span><b>Belum ada reservasi</b><small>Belum ada reservasi yang dibuat untuk tanggal ini. Buat jadwal baru agar meja dan dapur bisa disiapkan lebih awal.</small>'+(window.canPerm('reservations','create')?'<button class="btn btn-primary" data-action="booking"><span class="btn-icon">＋</span> Tambah Reservasi</button>':'')+'</div>';
 }
 /* Tampilan status meja: dihitung langsung dari data reservasi (bukan warna manual) */
 function tableStatusPanel(){
@@ -844,7 +844,7 @@ function productCard(p){
     '<div class="product-row"><div class="food-icon">'+productThumb(p)+'</div>'+
     '<div class="product-info"><b>'+esc(p.name)+'</b><small>'+esc(productNote(p))+'</small>'+
     (variants.length?'<div class="variant-chips">'+variants.map(v=>{const nm=variantName(v),d=variantDelta(p,v);return '<span class="vchip">'+esc(nm)+(d?'<b class="'+(d>0?'up':'down')+'">'+(d>0?'+':'−')+money(Math.abs(d))+'</b>':'')+'</span>'}).join('')+'</div>':'')+'</div>'+
-    '<div class="product-side"><div class="product-price">'+money(p.price)+'</div><button class="chip-edit" data-action="edit-menu:'+p.id+'" title="Ubah menu" aria-label="Ubah '+esc(p.name)+'">✎</button></div></div>'+
+    '<div class="product-side"><div class="product-price">'+money(p.price)+'</div>'+(window.canPerm('menu','update')?'<button class="chip-edit" data-action="edit-menu:'+p.id+'" title="Ubah menu" aria-label="Ubah '+esc(p.name)+'">✎</button>':'')+'</div></div>'+
     '<div class="product-actions"><span class="product-meta">'+badge+'</span>'+control+'</div>'+
   '</div>';
 }
@@ -875,7 +875,7 @@ function payNow(){
     const order={
       id:nextOrderId(),guest:name,items:count+' item',type:'QR · Self-order',
       total:money(total),status:'Dibayar',cls:'paid',time:nowHM(),at:Date.now(),
-      detail:lines.map(l=>({name:l.label||l.product.name,qty:l.qty,price:l.product.price,pid:l.product.id})),
+      detail:lines.map(l=>({name:l.label||l.product.name,qty:l.qty,price:(Number(l.price)>0?Number(l.price):l.product.price),pid:l.product.id})),
       method:method,mine:true
     };
     orders.unshift(order);
@@ -956,6 +956,9 @@ function menuMatches(p,q){
 }
 function menuPage(){
   const cats=menuCategories();
+  /* Tombol aksi menu hanya untuk yang berhak mengubah menu — staf yang hanya
+     membaca tidak melihat tombol yang pasti ditolak (membingungkan). */
+  const canAddMenu=window.canPerm('menu','create');
   if(activeMenuCat!=='Semua'&&cats.indexOf(activeMenuCat)<0)activeMenuCat='Semua';
   const q=menuQuery.trim().toLowerCase();
   const base=activeMenuCat==='Semua'?products:products.filter(p=>(p.cat||'Lainnya')===activeMenuCat);
@@ -969,7 +972,7 @@ function menuPage(){
   const empty=products.length
     ? '<div class="empty-state">Tidak ada produk pada kategori ini. Klik <b>Tambah menu</b> atau pilih kategori lain.</div>'
     : '<div class="empty-state">Belum ada menu sama sekali — restoran Anda masih baru. Klik <b>Tambah menu</b> untuk menambahkan produk pertama.</div>';
-  return `${heading('Menu & produk','Pilih kategori — Makanan, Makanan ringan, Minuman, Pastry, Dessert — agar produk lebih cepat ditemukan; kelola varian, stok, dan foto di sini. Pembeli bisa langsung memesan.','<button class="btn btn-primary" data-action="add-menu"><span class="btn-icon">＋</span> Tambah menu</button>')}
+  return `${heading('Menu & produk','Pilih kategori — Makanan, Makanan ringan, Minuman, Pastry, Dessert — agar produk lebih cepat ditemukan; kelola varian, stok, dan foto di sini. Pembeli bisa langsung memesan.',(canAddMenu?'<button class="btn btn-primary" data-action="add-menu"><span class="btn-icon">＋</span> Tambah menu</button>':''))}
   <div class="filter-row">${chips}</div>
   <div class="panel"><div class="panel-head menu-head"><div><div class="panel-title">${activeMenuCat==='Semua'?'Menu aktif':'Menu · '+esc(activeMenuCat)}</div><div class="panel-caption">Klik ✎ untuk mengubah kategori, jenis, varian, stok, dan foto · <b id="menuCount">${hits}</b> produk ditampilkan</div></div>
   <div class="menu-search"><input class="input" id="menuSearch" type="search" placeholder="⌕ Cari menu, kategori, atau jenis…" value="${esc(menuQuery)}" autocomplete="off" aria-label="Cari menu"><button class="link-btn menu-search-x" data-action="menu-search-clear" aria-label="Hapus pencarian" ${menuQuery?'':'hidden'}>✕</button></div></div>
@@ -1994,7 +1997,10 @@ function bookingCard(r){
   const cancelled=r.status==='cancelled';
   const cap=tableCapacity(r.table);
   const t=resTotals(r);
-  const acc=(!cancelled&&r.status!=='ready')?'<button class="btn btn-add" data-action="toggle-dp:'+rid+'" title="Acc pembayaran DP tamu" aria-label="Acc DP '+esc(r.name)+'">✓ Acc DP</button>':'';
+  /* Aksi ubah/acc/batal hanya untuk yang berhak mengubah reservasi —
+     role yang hanya membaca tidak melihat tombol yang pasti ditolak. */
+  const canEdit=window.canPerm('reservations','update');
+  const acc=canEdit&&(!cancelled&&r.status!=='ready')?'<button class="btn btn-add" data-action="toggle-dp:'+rid+'" title="Acc pembayaran DP tamu" aria-label="Acc DP '+esc(r.name)+'">✓ Acc DP</button>':'';
   const menu=(r.order&&r.order.length)?'<ul class="booking-menu">'+r.order.map(i=>'<li>'+i.qty+'× '+esc(i.name)+'<span>'+money(i.price*i.qty)+'</span></li>').join('')+
     '<li class="booking-total"><b>Total estimasi</b><span>'+money(t.total)+'</span></li>'+
     (t.dep?'<li class="booking-total dim"><b>Uang muka (DP)</b><span>− '+money(t.dep)+'</span></li>':'')+'</ul>':'';
@@ -2006,8 +2012,10 @@ function bookingCard(r){
       /* DP sudah diterima → reservasi terkonfirmasi, jadwal tidak bisa diubah
          atau dibatalkan lagi (permintaan pemilik: tombol Ubah & Batalkan hilang) */
       ?'<span class="booking-locked" title="DP sudah diterima — reservasi terkonfirmasi, jadwal tidak dapat diubah atau dibatalkan">🔒 Terkonfirmasi</span>'
-      :'<button class="btn btn-mini" data-action="edit-res:'+rid+'" title="Ubah reservasi — data lama tetap tersimpan di riwayat" aria-label="Ubah reservasi '+esc(r.name)+'">✎ Ubah</button>'+
-       '<button class="btn btn-mini btn-mini-danger" data-action="cancel-res:'+rid+'" title="Batalkan reservasi (tidak dihapus)" aria-label="Batalkan reservasi '+esc(r.name)+'">Batalkan</button>';
+      :canEdit
+        ?'<button class="btn btn-mini" data-action="edit-res:'+rid+'" title="Ubah reservasi — data lama tetap tersimpan di riwayat" aria-label="Ubah reservasi '+esc(r.name)+'">✎ Ubah</button>'+
+         '<button class="btn btn-mini btn-mini-danger" data-action="cancel-res:'+rid+'" title="Batalkan reservasi (tidak dihapus)" aria-label="Batalkan reservasi '+esc(r.name)+'">Batalkan</button>'
+        :'';
   return '<div class="booking-card'+(cancelled?' is-cancelled':'')+'"><div><b>'+esc(r.time)+' · '+esc(r.name)+'</b><small>'+esc(String(r.guests))+' orang · Meja '+esc(String(r.table))+' (kap. '+cap+' orang)<br>'+fmtDate(r.date)+' · '+range+'</small>'+bookingCountdown(r)+menu+hist+'</div><div class="booking-side">'+
     '<span class="status '+st.cls+'">'+st.label+'</span>'+acc+actions+'</div></div>';
 }
@@ -2776,7 +2784,7 @@ const ACTION_PERM={
   'edit-res:':['reservations','update'],'toggle-dp:':['reservations','update'],'cancel-res:':['reservations','update'],'confirm-cancel-res:':['reservations','update'],'del-res:':['reservations','update'],
   'clear-res-history':['reservations','delete'],'confirm-clear-res-history':['reservations','delete'],'acc-clear-table:':['clear-table','update'],
   'add-menu':['menu','create'],'save-menu:':['menu','update'],'edit-menu:':['menu','update'],'delete-menu:':['menu','delete'],
-  'add-variant:':['menu','update'],'pick-variant:':['menu','create'],'remove-menu-image':['menu','update'],
+  'add-variant:':['orders|antar','update'],'pick-variant:':['orders|antar','update'],'remove-menu-image':['menu','update'],
   'start-prep:':['orders','update'],'mark-ready:':['orders','update'],'cancel-order:':['orders','update'],'confirm-cancel-order:':['orders','update'],
   'deliver-start:':['orders|antar','update'],'serve-order:':['orders|antar','update'],'deliver-done:':['orders|antar','update'],'start-prep':['orders','update'],
   'clear-orders':['orders','delete'],'confirm-clear-orders':['orders','delete'],
@@ -2785,6 +2793,7 @@ const ACTION_PERM={
   'journal-add':['accounting','create'],'journal-save':['accounting','create'],'journal-line-add':['accounting','create'],'export-journal':['accounting','export'],
   'staff-add':['staff','create'],'staff-form-toggle':['staff','create'],'staff-toggle:':['staff','update'],'staff-del:':['staff','delete'],'staff-del-confirm:':['staff','delete'],'staff-perms:':['permissions','update'],
   'invite-send':['staff','create'],'invite-form-toggle':['staff','create'],'invite-revoke:':['staff','delete'],'invite-revoke-confirm:':['staff','delete'],
+  'checkout':['orders|antar','update'],'pay-now':['orders|antar','update'],
   'reset-data':['settings','delete']
 };
 function actionAllowed(action){

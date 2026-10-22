@@ -166,6 +166,9 @@ $live = @'
 $idx = Join-Path $assets 'index.html'
 $ic = Get-Content $idx -Raw -Encoding UTF8
 if ($ic -notmatch 'RASA_REVOKER') {
+  # cadangan byte-asli dulu — dipulihkan di akhir uji supaya suntikan uji
+  # (pemicu pencabutan) tidak pernah tertinggal / ikut ter-commit
+  Copy-Item $idx ($idx + '.uji-bak') -Force
   $ic = $ic -replace '</body>', $live
   Set-Content -Path $idx -Value $ic -Encoding UTF8
   Ok 'pemicu pencabutan langsung dipasang di index.html (aset uji)'
@@ -227,6 +230,16 @@ if ($domD -match 'Anda tidak punya izin') { Ok 'pantauan izin otomatis mengganti
 $m2 = [regex]::Match($domD, '<button[^>]*data-page="reservations"[^>]*>')
 if ($m2.Success -and ($m2.Value -match 'display:\s*none' -or $m2.Value -match 'hidden')) { Ok 'menu Reservasi ikut disembunyikan otomatis' } else { Fail 'menu Reservasi masih terbuka setelah pencabutan' }
 if ($domD -match 'Owner mencabut wewenang') { Ok 'notifikasi pencabutan muncul di layar staf' } else { Fail 'notifikasi pencabutan tidak muncul' }
+
+# pulihkan index.html seperti semula (suntikan uji tidak boleh tertinggal)
+$idxEnd = Join-Path $assets 'index.html'
+if (Test-Path ($idxEnd + '.uji-bak')) {
+  Copy-Item ($idxEnd + '.uji-bak') $idxEnd -Force
+  Remove-Item ($idxEnd + '.uji-bak') -Force
+  Ok 'index.html dipulihkan setelah uji'
+}
+# buang halaman uji yang tadi dibuat di folder aset
+Remove-Item (Join-Path $assets 'test-boot.html'),(Join-Path $assets 'test-img.html') -Force -ErrorAction SilentlyContinue
 
 Write-Host ""
 if ($script:failed) { Write-Host 'HASIL: ADA KEGAGALAN'; exit 1 } else { Write-Host 'HASIL: SEMUA LULUS' }
