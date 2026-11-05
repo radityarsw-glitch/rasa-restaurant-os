@@ -123,33 +123,52 @@ export function requirePerm(a, module, action) {
 }
 
 /* ============================================================
-   Pengiriman OTP — layar (default) atau email bila RESEND_API_KEY ada
+   Pengiriman OTP — SELALU lewat email (Gmail) ke alamat yang login.
+
+   Keamanan: kode TIDAK PERNAH dikembalikan ke layar maupun ke
+   response API (kanal `screen` hanya dipakai mode pengembangan
+   lewat flag OTP_SCREEN_FALLBACK=1 pada .dev.vars wrangler dev —
+   tidak pernah aktif di produksi).
+
+   Bila layanan email tidak terpasang (RESEND_API_KEY kosong) atau
+   pengiriman gagal, permintaan ditolak dengan pesan jelas — kode
+   tetap tidak bocor ke klien.
    ============================================================ */
 async function deliverOtp(env, email, code, purpose) {
   const key = env.RESEND_API_KEY;
-  if (key) {
-    try {
-      const res = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          from: env.OTP_FROM || 'RASA Restaurant OS <onboarding@resend.dev>',
-          to: [email],
-          subject: code + ' adalah kode OTP Anda — RASA Restaurant OS',
-          text:
-            'Kode verifikasi Anda: ' + code + '\n\n' +
-            'Berlaku 5 menit dan hanya bisa dipakai satu kali. ' +
-            (purpose === 'register' ? 'Kode ini dipakai untuk membuat akun baru.' : 'Kode ini dipakai untuk masuk ke akun Anda.') +
-            '\n\nJika Anda tidak meminta kode ini, abaikan email ini.'
-        })
-      });
-      if (res.ok) return 'email';
-      console.log('otp-email-failed', res.status, await res.text());
-    } catch (e) {
-      console.log('otp-email-error', String(e && e.message));
-    }
+  if (!key) {
+    console.log('otp-email-skipped', 'RESEND_API_KEY belum dipasang');
+    return null;
   }
-  return 'screen';
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: env.OTP_FROM || 'RASA Restaurant OS <onboarding@resend.dev>',
+        to: [email],
+        subject: code + ' adalah kode OTP Anda — RASA Restaurant OS',
+        text:
+          'Kode verifikasi Anda: ' + code + '\n\n' +
+          'Berlaku 5 menit dan hanya bisa dipakai satu kali. ' +
+          (purpose === 'register' ? 'Kode ini dipakai untuk membuat akun baru.' : 'Kode ini dipakai untuk masuk ke akun Anda.') +
+          '\n\nJika Anda tidak meminta kode ini, abaikan email ini.'
+      })
+    });
+    if (res.ok) return 'email';
+    console.log('otp-email-failed', res.status, await res.text());
+  } catch (e) {
+    console.log('otp-email-error', String(e && e.message));
+  }
+  return null;
+}
+
+/* Mode pengembangan lokal (wrangler dev + .dev.vars): kode boleh
+   dikembalikan ke klien agar skrip uji otomatis tetap berjalan.
+   Tidak pernah dipasang di produksi. */
+function screenFallback(env) {
+  const v = String(env.OTP_SCREEN_FALLBACK || '').toLowerCase();
+  return v === '1' || v === 'true' || v === 'yes';
 }
 
 /* ============================================================
@@ -212,6 +231,20 @@ export async function requestOtp(req, env) {
     inviteName: inviteRestaurant ? inviteRestaurant.name : ''
   });
 
+  /* Kirim dulu ke email (Gmail) — bila pengiriman gagal, kode lama yang
+     masih berlaku tidak ikut dibatalkan dan tidak ada kode baru tersimpan. */
+  const channel = screenFallback(env) ? 'screen' : await deliverOtp(env, email, code, purpose);
+
+  /* Kode HANYA dikembalikan pada mode pengembangan lokal. Di produksi
+     kode selalu dikirim ke email dan tidak pernah masuk response. */
+  if (!channel) {
+    return err(
+      'Kode OTP gagal dikirim ke ' + email + '. Layanan email restoran belum aktif (RESEND_API_KEY) atau sedang bermasalah — hubungi pemilik restoran.',
+      502,
+      { code: 'otp_delivery_failed', field: 'email' }
+    );
+  }
+
   /* OTP lama yang belum dipakai untuk email+purpose sama dibatalkan */
   await DB(env)
     .prepare('UPDATE otp_codes SET used_at = ? WHERE email = ? AND purpose = ? AND used_at = 0 AND expires_at > ?')
@@ -219,10 +252,8 @@ export async function requestOtp(req, env) {
 
   await DB(env).prepare(
     `INSERT INTO otp_codes (id,email,code_hash,purpose,payload,channel,attempts,expires_at,used_at,created_at)
-     VALUES (?,?,?,?,?, 'screen', 0, ?, 0, ?)`
-  ).bind(id, email, await sha256(id + ':' + email + ':' + code), purpose, payload, now + OTP_TTL, now).run();
-
-  const channel = await deliverOtp(env, email, code, purpose);
+     VALUES (?,?,?,?,?,?, 0, ?, 0, ?)`
+  ).bind(id, email, await sha256(id + ':' + email + ':' + code), purpose, payload, channel, now + OTP_TTL, now).run();
 
   return json({
     ok: true,
@@ -230,7 +261,6 @@ export async function requestOtp(req, env) {
     purpose,
     delivery: channel,
     expiresAt: now + OTP_TTL,
-    /* kode hanya dikembalikan bila pengiriman lewat layar (belum ada layanan email) */
     otp: channel === 'screen' ? code : null
   });
 }

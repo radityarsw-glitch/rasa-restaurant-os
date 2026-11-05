@@ -116,8 +116,15 @@ function onboardPanel(){
 }
 function heading(title,subtitle,action='') {return `<div class="page-heading"><div><div class="eyebrow">${(store.restaurantName||'Restoran').toUpperCase()} · ${DATE_LABEL}</div><h1>${title}</h1><div class="subtitle">${subtitle}</div></div><div class="heading-actions"><button class="btn date-btn" data-action="date"><span class="btn-icon">▦</span> Hari ini⌄</button>${action}</div></div>`}
 function stat(label,value,foot,icon,trend='') {return `<div class="stat-card"><div class="stat-top">${label}<span class="stat-icon">${icon}</span></div><div class="stat-value">${value}</div><div class="stat-foot"><span class="trend ${trend.includes('−')?'warn':''}">${trend}</span>${foot}</div></div>`}
-function tableRows(rows){return rows.map(o=>`<tr><td>${o.id}<span class="subcell">${o.guest}</span></td><td>${o.items}</td><td class="method">${o.type}</td><td>${o.total}</td><td><span class="status ${o.cls}">${o.status}</span></td><td>${o.time}</td></tr>`).join('')}
-function orderTable(rows=orders){const body=rows.length?tableRows(rows):'<tr><td colspan="6" class="empty-state">Belum ada pesanan — daftar kosong.</td></tr>';return `<div class="panel orders-panel"><div class="panel-head"><div><div class="panel-title">Pesanan terbaru</div><div class="panel-caption">Order QR dan POS yang masuk hari ini</div></div><button class="link-btn" data-page="orders">Lihat semua →</button></div><div class="table-wrap"><table><thead><tr><th>ID Pesanan</th><th>Item</th><th>Channel</th><th>Total</th><th>Status</th><th>Waktu</th></tr></thead><tbody>${body}</tbody></table></div></div>`}
+/* Struk pelanggan — tombol baca-only di tabel riwayat (modal ditangani
+   modul core/receipt.js lewat window.RASA.actions.receipt). */
+function receiptBtn(id){
+  const key=esc(String(id==null?'':id));
+  if(!key)return '';
+  return '<button class="btn btn-ghost btn-receipt" data-action="receipt:'+key+'" title="Buka struk pelanggan" aria-label="Buka struk '+key+'">🧾 Struk</button>';
+}
+function tableRows(rows){return rows.map(o=>`<tr><td>${o.id}<span class="subcell">${o.guest}</span></td><td>${o.items}</td><td class="method">${o.type}</td><td>${o.total}</td><td><span class="status ${o.cls}">${o.status}</span></td><td>${o.time}</td><td class="col-receipt">${receiptBtn(o.id)}</td></tr>`).join('')}
+function orderTable(rows=orders){const body=rows.length?tableRows(rows):'<tr><td colspan="7" class="empty-state">Belum ada pesanan — daftar kosong.</td></tr>';return `<div class="panel orders-panel"><div class="panel-head"><div><div class="panel-title">Pesanan terbaru</div><div class="panel-caption">Order QR dan POS yang masuk hari ini</div></div><button class="link-btn" data-page="orders">Lihat semua →</button></div><div class="table-wrap"><table><thead><tr><th>ID Pesanan</th><th>Item</th><th>Channel</th><th>Total</th><th>Status</th><th>Waktu</th><th>Aksi</th></tr></thead><tbody>${body}</tbody></table></div></div>`}
 /* ---------- Tren penjualan ----------
    Titik grafik dihitung dari data pesanan per jam (08.00–20.00), garis putus-putus
    = rata-rata penjualan per jam, dan sumbu-Y mengikuti nilai tertinggi (bukan
@@ -855,12 +862,30 @@ function openCheckout(){
   const lines=cartLines();
   if(!lines.length){toast('Keranjang masih kosong. Pilih menu dulu.');return}
   openModal('<div class="modal-head"><span class="provider-mark" style="--pm:#a97c2c">⌗</span><div><b>Keranjang & pembayaran</b><small>'+cartCount()+' item dari menu produk</small></div><button class="modal-close" data-action="close-modal" aria-label="Tutup">×</button></div>'+
-    '<div class="receipt">'+receiptRows(lines)+'<div class="receipt-total"><span>Total bayar</span><b>'+money(cartTotal())+'</b></div></div>'+
+    '<div class="receipt">'+receiptRows(lines)+'<div class="receipt-total"><span>Total bayar</span><b id="coTotal">'+money(cartTotal())+'</b></div></div>'+
     '<label class="field"><span>Nama pembeli</span><input class="input" id="coName" maxlength="40" placeholder="Nama Anda (opsional)" autocomplete="off"></label>'+
+    '<div class="field-row">'+
+      '<label class="field"><span>Jenis pesanan</span><select class="input" id="coType"><option>Makan di Tempat</option><option>Bawa Pulang</option></select></label>'+
+      '<label class="field"><span>Nomor meja</span><input class="input" id="coTable" maxlength="12" placeholder="Opsional — mis. 7" autocomplete="off"></label>'+
+    '</div>'+
     '<label class="field"><span>Metode pembayaran</span><select class="input" id="coMethod"><option>QRIS</option><option>Tunai di kasir</option><option>Kartu debit / kredit</option><option>E-wallet (GoPay / OVO)</option></select></label>'+
-    '<div class="modal-actions"><button class="btn" data-action="close-modal">Batal</button><button class="btn btn-primary" data-action="pay-now">Bayar '+money(cartTotal())+'</button></div>'+
-    '<small class="modal-note">Pembayaran pada prototipe ini disimulasikan — tidak ada uang yang benar-benar dipotong.</small>');
+    '<div class="field-row">'+
+      '<label class="field"><span>Diskon (Rp)</span><input class="input" id="coDiscount" inputmode="numeric" placeholder="0" autocomplete="off"></label>'+
+      '<label class="field"><span>Uang diterima (Rp)</span><input class="input" id="coPaid" inputmode="numeric" placeholder="Otomatis = total" autocomplete="off"></label>'+
+    '</div>'+
+    '<div class="modal-actions"><button class="btn" data-action="close-modal">Batal</button><button class="btn btn-primary" data-action="pay-now" id="coPayBtn">Bayar '+money(cartTotal())+'</button></div>'+
+    '<small class="modal-note">Pembayaran pada prototipe ini disimulasikan — tidak ada uang yang benar-benar dipotong. Struk pelanggan terbit otomatis setelah pembayaran berhasil.</small>');
   const n=document.getElementById('coName');if(n)n.focus();
+}
+/* Total yang benar-benar dibayar = total keranjang − diskon.
+   Dipakai bersama oleh label tombol bayar dan payNow() supaya
+   nilai struk, POS, dan laporan selalu memakai angka yang sama. */
+function checkoutDiscount(){return Math.max(0,parseRp(fieldVal('coDiscount')))}
+function checkoutPayable(){return Math.max(0,cartTotal()-checkoutDiscount())}
+function checkoutTotalsRefresh(){
+  const total=checkoutPayable();
+  const box=document.getElementById('coTotal');if(box)box.textContent=money(total);
+  const btn=document.getElementById('coPayBtn');if(btn)btn.textContent='Bayar '+money(total);
 }
 function payNow(){
   const lines=cartLines();
@@ -868,15 +893,24 @@ function payNow(){
   if(!modalEl)return;
   const name=fieldVal('coName')||'Tamu';
   const method=fieldVal('coMethod')||'QRIS';
-  const total=cartTotal();
+  const orderType=fieldVal('coType')||'Makan di Tempat';
+  const table=fieldVal('coTable');
+  const discount=checkoutDiscount();
+  const total=checkoutPayable();
+  const paidInput=parseRp(fieldVal('coPaid'));
+  const paid=paidInput>0?paidInput:total;
+  if(paid<total){toast('Uang diterima '+money(paid)+' kurang dari total '+money(total)+'.');return}
   const count=cartCount();
   modalEl.querySelector('.modal').innerHTML='<div class="center-text"><div class="spinner"></div><b>Memproses pembayaran…</b><small>'+esc(method)+' · '+money(total)+'</small></div>';
   setTimeout(()=>{
     const order={
       id:nextOrderId(),guest:name,items:count+' item',type:'QR · Self-order',
       total:money(total),status:'Dibayar',cls:'paid',time:nowHM(),at:Date.now(),
-      detail:lines.map(l=>({name:l.label||l.product.name,qty:l.qty,price:(Number(l.price)>0?Number(l.price):l.product.price),pid:l.product.id})),
-      method:method,mine:true
+      detail:lines.map(l=>({name:l.label||l.product.name,variant:l.variant||'',qty:l.qty,price:(Number(l.price)>0?Number(l.price):l.product.price),pid:l.product.id})),
+      method:method,mine:true,
+      /* data struk: selalu ikut transaksi, bukan data contoh */
+      cashier:String(store.ownerName||'').trim(),orderType:orderType,table:table,
+      discount:discount,paid:paid,change:Math.max(0,paid-total),ref:'',payStatus:'Lunas'
     };
     orders.unshift(order);
     store.orders=orders;
@@ -887,8 +921,8 @@ function payNow(){
     if(modalEl){
       modalEl.querySelector('.modal').innerHTML=
         '<div class="modal-success"><div class="ok">✓</div><div class="center-text"><b>Pembayaran berhasil</b><small>Pesanan '+order.id+' tercatat di halaman <b>Pesanan</b>.</small></div>'+
-        '<div class="receipt">'+receiptRows(cartCountLines(order))+'<div class="receipt-total"><span>Total dibayar</span><b>'+order.total+'</b></div></div>'+
-        '<div class="modal-actions" style="justify-content:center"><button class="btn btn-primary" data-action="finish-pay">Lihat pesanan saya</button></div></div>';
+        '<div class="receipt">'+receiptRows(cartCountLines(order))+(discount?'<div class="receipt-row"><span>Diskon / potongan</span><b>− '+money(discount)+'</b></div>':'')+'<div class="receipt-total"><span>Total dibayar</span><b>'+order.total+'</b></div></div>'+
+        '<div class="modal-actions" style="justify-content:center"><button class="btn" data-action="receipt:'+esc(String(order.id))+'">🧾 Lihat struk</button><button class="btn btn-primary" data-action="finish-pay">Lihat pesanan saya</button></div></div>';
     }
     render('menu',true);
     toast('Pembayaran berhasil · '+order.id);
@@ -909,7 +943,7 @@ function myOrdersPanel(){
     const lines=(o.detail||[]).map(d=>'<li>'+d.qty+'× '+esc(d.name)+'<span>'+money(d.price*d.qty)+'</span></li>').join('');
     const cancelled=o.cls==='cancelled';
     const actions=cancelled?'<div class="my-order-actions"><span class="cancelled-note">Pesanan dibatalkan</span></div>'
-      :'<div class="my-order-actions"><button class="btn btn-ghost" data-action="cancel-order:'+esc(String(o.id))+'">Batalkan pesanan</button></div>';
+      :'<div class="my-order-actions">'+receiptBtn(o.id)+'<button class="btn btn-ghost" data-action="cancel-order:'+esc(String(o.id))+'">Batalkan pesanan</button></div>';
     return '<div class="my-order'+(cancelled?' is-cancelled':'')+'"><div class="my-order-top"><b>'+o.id+'</b><span class="status '+o.cls+'">'+o.status+'</span><small>'+o.time+' · '+esc(o.method||o.type)+'</small></div>'+
       '<ul class="my-order-items">'+lines+'</ul>'+
       '<div class="my-order-foot"><span>Total pembayaran'+(o.guest?' · '+esc(o.guest):'')+'</span><b>'+o.total+'</b></div>'+actions+'</div>';
@@ -2495,7 +2529,7 @@ function openModal(html,opts){
   closeModal();
   modalEl=document.createElement('div');
   modalEl.className='modal-overlay';
-  modalEl.innerHTML='<div class="modal'+(opts&&opts.wide?' modal-wide':'')+'">'+html+'</div>';
+  modalEl.innerHTML='<div class="modal'+(opts&&opts.wide?' modal-wide':'')+(opts&&opts.className?' '+opts.className:'')+'">'+html+'</div>';
   document.body.appendChild(modalEl);
   modalEl.addEventListener('click',ev=>{if(ev.target===modalEl)closeModal()});
   if(opts&&opts.wide){startLiveCountdown();tickLiveCountdown()}
@@ -2634,6 +2668,20 @@ function settingsPage(){
       <div class="name-preview"><span class="np-mark">⌂</span><span><b id="namePreviewText">${esc(store.restaurantName)}</b><small id="namePreviewLoc">${esc(store.restaurantLocation)}</small></span></div>
       <div class="name-preview" style="margin-top:10px"><span class="np-mark" id="brandPreviewMark">r.</span><span><b id="brandPreviewText">${esc(brandLabel())}</b><small>Logo brand & judul tab</small></span></div>
       <div class="hint">Perubahan tersimpan otomatis saat Anda mengetik. Klik profil di sidebar untuk kembali ke sini kapan saja.</div>
+    </div>
+
+    <div class="panel span-2">
+      <div class="panel-head"><div><div class="panel-title">Kontak & media sosial restoran</div><div class="panel-caption">Tampil di struk pelanggan, bagikan struk WhatsApp/email, dan halaman publik</div></div></div>
+      <label class="field"><span>Alamat restoran</span><input class="input" id="restoAddress" value="${esc(store.restoAddress||'')}" maxlength="90" placeholder="Jl. Merdeka No. 12, Jakarta Selatan"></label>
+      <div class="field-row">
+        <label class="field"><span>Nomor telepon / WhatsApp</span><input class="input" id="restoPhone" value="${esc(store.restoPhone||'')}" maxlength="24" placeholder="0812-3456-7890" autocomplete="off"></label>
+        <label class="field"><span>Email restoran</span><input class="input" id="restoEmail" type="email" value="${esc(store.restoEmail||'')}" maxlength="60" placeholder="halo@rasa.id" autocomplete="off"></label>
+      </div>
+      <div class="field-row">
+        <label class="field"><span>Website</span><input class="input" id="restoWebsite" value="${esc(store.restoWebsite||'')}" maxlength="60" placeholder="rasa.id" autocomplete="off"></label>
+        <label class="field"><span>Media sosial</span><input class="input" id="restoSocial" value="${esc(store.restoSocial||'')}" maxlength="60" placeholder="@rasa.id" autocomplete="off"></label>
+      </div>
+      <div class="hint">Data ini menjadi <b>satu-satunya</b> sumber identitas kontak pada struk pelanggan (bagian identitas dan bagian bawah struk). Isi yang kosong otomatis memakai nama lokasi / cabang di atas.</div>
     </div>
 
     <div class="panel span-2">
@@ -2791,7 +2839,7 @@ const ACTION_PERM={
   'inv-add':['inventory','create'],'inv-edit:':['inventory','update'],'inv-adjust:':['inventory','update'],'save-inv:':['inventory','update'],'save-adjust:':['inventory','update'],'inv-del:':['inventory','delete'],'inv-del-confirm:':['inventory','delete'],
   'recipe-add':['recipes','create'],'recipe-edit:':['recipes','update'],'recipe-save':['recipes','update'],'recipe-remove:':['recipes','delete'],
   'journal-add':['accounting','create'],'journal-save':['accounting','create'],'journal-line-add':['accounting','create'],'export-journal':['accounting','export'],
-  'staff-add':['staff','create'],'staff-form-toggle':['staff','create'],'staff-toggle:':['staff','update'],'staff-del:':['staff','delete'],'staff-del-confirm:':['staff','delete'],'staff-perms:':['permissions','update'],
+  'staff-toggle:':['staff','update'],'staff-del:':['staff','delete'],'staff-del-confirm:':['staff','delete'],'staff-perms:':['permissions','update'],
   'invite-send':['staff','create'],'invite-form-toggle':['staff','create'],'invite-revoke:':['staff','delete'],'invite-revoke-confirm:':['staff','delete'],
   'checkout':['orders|antar','update'],'pay-now':['orders|antar','update'],
   'reset-data':['settings','delete']
@@ -2931,6 +2979,8 @@ document.addEventListener('input',e=>{
   else if(id==='locInput'){store.restaurantLocation=e.target.value}
   else if(id==='ownerInput'){store.ownerName=e.target.value}
   else if(id==='roleInput'){store.ownerRole=e.target.value}
+  else if(id==='restoAddress'||id==='restoPhone'||id==='restoEmail'||id==='restoWebsite'||id==='restoSocial'){store[id]=e.target.value}
+  else if(id==='coDiscount'||id==='coPaid'){checkoutTotalsRefresh();return}
   else if(id==='latInput'||id==='lngInput'){
     store[id==='latInput'?'lat':'lng']=e.target.value.trim();
     saveStore();

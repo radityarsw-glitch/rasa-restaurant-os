@@ -2847,3 +2847,142 @@ html[data-theme="midnight"] .link-btn:hover{color:#9df2ff;filter:none}
 @media(max-width:760px){
   .staff-act{min-height:38px;padding:8px 12px;font-size:11px}
 }
+
+
+/* ============================================================
+   25. STRUK PELANGGAN (Customer Receipt)
+   Satu modul: core/receipt.js. Semua data dari transaksi tersimpan
+   + profil restoran di Pengaturan. Gaya kertas putih selalu terang
+   (termasuk tema gelap) supaya tampilan menyerupai struk asli.
+   ============================================================ */
+
+/* --- tombol Struk di tabel riwayat & panel pesanan saya --- */
+.col-receipt{white-space:nowrap;text-align:right}
+.btn-receipt{height:26px;padding:0 10px;font-size:9.5px;gap:5px;border-radius:7px}
+.my-order-actions .btn-receipt{margin-right:6px}
+
+/* --- modal pratinjau --- */
+.modal-receipt{width:min(470px,100%)}
+.rcpt-preview{display:flex;justify-content:center;padding:2px 0 4px}
+.rcpt-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:14px}
+.rcpt-actions .btn{flex:1 1 auto;min-width:112px;justify-content:center}
+
+/* --- kertas struk --- */
+.rcpt{
+  width:100%;max-width:400px;margin:0 auto;
+  background:#ffffff;color:#171310;
+  border:1px solid var(--hairline);border-radius:14px;
+  padding:20px 20px 16px;
+  font-size:12px;line-height:1.5;
+}
+.rcpt *{box-sizing:border-box}
+.rcpt-head{text-align:center;padding-bottom:10px}
+.rcpt-logo{
+  width:46px;height:46px;margin:0 auto 8px;
+  border-radius:13px;overflow:hidden;
+  background:#f6f1e7;border:1px solid #eadfcb;
+  display:grid;place-items:center;
+  font:700 20px 'Fraunces',Georgia,serif;color:#a97c2c}
+.rcpt-logo img{width:100%;height:100%;object-fit:cover;display:block}
+.rcpt-name{font:700 17px 'Fraunces',Georgia,serif;color:#171310}
+.rcpt-contact{font-size:10.5px;color:#6a6058;margin-top:3px;word-break:break-word}
+.rcpt-rule{
+  display:flex;align-items:center;gap:9px;
+  margin:15px 0 9px;color:#a97c2c}
+.rcpt-rule::after{content:'';flex:1;height:1px;background:#e7ded0}
+.rcpt-rule span{font-size:9px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;white-space:nowrap}
+.rcpt-meta,.rcpt-summary{display:flex;flex-direction:column;gap:5px}
+.rcpt-line{display:flex;justify-content:space-between;gap:12px;align-items:baseline;font-size:11.5px;color:#5f564e}
+.rcpt-line span{min-width:0;word-break:break-word}
+.rcpt-line b{color:#171310;font-weight:600;text-align:right;white-space:nowrap}
+.rcpt-items{display:flex;flex-direction:column;gap:9px}
+.rcpt-item{border-bottom:1px dashed #ece3d6;padding-bottom:8px}
+.rcpt-item:last-child{border-bottom:0;padding-bottom:0}
+.rcpt-item-top{display:flex;justify-content:space-between;gap:10px;font-size:12px}
+.rcpt-item-top b,.rcpt-item-top span{font-weight:700;color:#171310}
+.rcpt-item-top span{white-space:nowrap}
+.rcpt-item small{display:block;font-size:10px;color:#7b7169;margin-top:2px}
+.rcpt-item .rcpt-note{color:#a97c2c}
+.rcpt-hint{
+  font-size:10px;color:#7b7169;background:#faf6ee;
+  border:1px solid #efe6d6;border-radius:8px;
+  padding:7px 9px;margin-top:9px}
+.rcpt-grand{
+  display:flex;justify-content:space-between;align-items:center;gap:10px;
+  margin-top:11px;padding:11px 13px;border-radius:11px;
+  background:#171310;color:#ffffff}
+.rcpt-grand span{font-size:10px;font-weight:800;letter-spacing:1.3px}
+.rcpt-grand b{font:700 17px 'Fraunces',Georgia,serif;white-space:nowrap}
+.rcpt-status{font-style:normal;font-weight:700;font-size:10px;padding:2px 9px;border-radius:999px;white-space:nowrap}
+.rcpt-status.ok{background:#e7f6ee;color:#1f7a4d}
+.rcpt-status.wait{background:#fdf3e0;color:#8a6a2a}
+.rcpt-status.bad{background:#fdeceb;color:#a33528}
+.rcpt-foot{display:flex;gap:14px;align-items:center;margin-top:15px;padding-top:12px;border-top:1px solid #ece3d6}
+.rcpt-qrbox{flex:none;text-align:center}
+.rcpt-qrbox small{display:block;font-size:8.5px;color:#7b7169;margin-top:5px;line-height:1.35}
+.rcpt-qr{display:block;background:#fff;border-radius:6px}
+.rcpt-thanks{font:700 13px 'Fraunces',Georgia,serif;color:#171310}
+.rcpt-proof{font-size:9.5px;color:#7b7169;margin-top:12px;line-height:1.55}
+.rcpt-gen{font-size:8.5px;color:#9a9088;margin-top:6px;text-align:center;word-break:break-word}
+
+/* --- area cetak thermal (58 mm / 80 mm) --- */
+#rasaPrintArea{display:none}
+.rcpt-print-area{
+  background:#fff;color:#000;
+  font-family:'Courier New',Courier,monospace;
+  -webkit-print-color-adjust:exact;print-color-adjust:exact}
+.rcpt-w80{width:76mm}
+.rcpt-w58{width:54mm}
+.rcpt-print-area .rcpt{
+  border:0;border-radius:0;padding:0;max-width:none;margin:0;
+  background:#fff;color:#000;
+  font-size:9.6pt;line-height:1.32}
+.rcpt-w58 .rcpt{font-size:8.2pt}
+.rcpt-print-area .rcpt-head{padding-bottom:6px}
+.rcpt-print-area .rcpt-logo{
+  width:34px;height:34px;margin-bottom:5px;border:1px solid #000;background:#fff;color:#000;font-size:15px}
+.rcpt-print-area .rcpt-name{font-size:13pt;color:#000}
+.rcpt-print-area .rcpt-contact{font-size:8pt;color:#000}
+.rcpt-print-area .rcpt-rule{margin:9px 0 5px;color:#000}
+.rcpt-print-area .rcpt-rule::after{background:#000}
+.rcpt-print-area .rcpt-rule span{font-size:7.5pt;letter-spacing:1px}
+.rcpt-print-area .rcpt-line{font-size:8.4pt;color:#000;gap:6px}
+.rcpt-w58 .rcpt-print-area .rcpt-line,.rcpt-w58 .rcpt-line{font-size:7.2pt}
+.rcpt-print-area .rcpt-line b,.rcpt-print-area .rcpt-item-top b,.rcpt-print-area .rcpt-item-top span{color:#000}
+.rcpt-print-area .rcpt-items{gap:6px}
+.rcpt-print-area .rcpt-item{border-bottom:1px dashed #999;padding-bottom:5px}
+.rcpt-print-area .rcpt-item-top{font-size:8.6pt;color:#000}
+.rcpt-print-area .rcpt-item small{font-size:7.4pt;color:#333}
+.rcpt-print-area .rcpt-item .rcpt-note{color:#000}
+.rcpt-print-area .rcpt-hint{font-size:7.4pt;color:#333;background:#fff;border:1px solid #999;padding:5px 6px}
+.rcpt-print-area .rcpt-grand{
+  background:#fff;color:#000;border-top:2px solid #000;border-bottom:2px solid #000;
+  border-radius:0;padding:5px 0;margin-top:7px}
+.rcpt-print-area .rcpt-grand span{font-size:8pt;letter-spacing:1px}
+.rcpt-print-area .rcpt-grand b{font-size:12pt;color:#000}
+.rcpt-print-area .rcpt-status{background:#fff;color:#000;border:1px solid #000;padding:0 5px}
+.rcpt-print-area .rcpt-foot{gap:9px;margin-top:9px;padding-top:8px;border-top:1px solid #000}
+.rcpt-print-area .rcpt-qrbox small{font-size:6.6pt;color:#000}
+.rcpt-print-area .rcpt-thanks{font-size:10pt;color:#000}
+.rcpt-print-area .rcpt-proof{font-size:7.4pt;color:#000}
+.rcpt-print-area .rcpt-gen{font-size:7pt;color:#000}
+
+/* --- hanya struk yang tercetak: sidebar, navbar, tombol, modal,
+       dan chrome dashboard ikut disembunyikan otomatis --- */
+@media print{
+  body>*:not(#rasaPrintArea){display:none !important}
+  #rasaPrintArea{display:block !important}
+  html,body{background:#fff !important;height:auto!important;overflow:visible!important}
+  .rcpt-print-area{width:auto!important}
+}
+
+/* --- tampilan struk di layar kecil --- */
+@media(max-width:560px){
+  .modal-receipt{width:100%}
+  .rcpt{padding:16px 14px 14px;border-radius:12px}
+  .rcpt-grand{padding:10px 11px}
+  .rcpt-grand b{font-size:15px}
+  .rcpt-foot{flex-direction:column;align-items:center;text-align:center;gap:9px}
+  .rcpt-actions .btn{min-width:0;flex:1 1 44%;font-size:10px}
+  .btn-receipt{height:28px;padding:0 11px}
+}

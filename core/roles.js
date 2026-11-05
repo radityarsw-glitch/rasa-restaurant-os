@@ -207,31 +207,20 @@ window.RasaRoles = (function () {
     if (!d.waiter) d.waiter = dashWaiter;
   }
 
-  /* ---------- 3. Panel Pengaturan: staf ---------- */
+  /* ---------- 3. Panel Pengaturan: staf ----------
+     Penambahan staf TIDAK dilakukan lewat form manual lagi — owner
+     mengundang calon staf lewat email (Gmail) di panel "Undangan staf".
+     Panel ini hanya menampilkan daftar staf beserta aksi Nonaktifkan,
+     Wewenang, dan Hapus. */
   function staffPanelHtml() {
-    const canCreate = window.canPerm('staff', 'create');
-    const form = `
-      <div class="staff-form" id="staffForm" ${state.formOpen ? '' : 'hidden'}>
-        <label class="field"><span>Nama staf</span><input class="input" id="stName" maxlength="60" placeholder="Nama lengkap"></label>
-        <label class="field"><span>Email</span><input class="input" id="stEmail" type="email" maxlength="160" placeholder="nama@restoran.com"></label>
-        <label class="field"><span>Role</span><select class="input" id="stRole">
-          ${Object.keys(ROLE_LABELS).map(r => '<option value="' + r + '"' + (r === 'waiter' ? ' selected' : '') + '>' + ROLE_LABELS[r] + '</option>').join('')}
-        </select></label>
-        <div class="btn-row">
-          <button class="btn btn-primary" data-action="staff-add">Simpan staf</button>
-          <button class="btn" data-action="staff-form-toggle">Batal</button>
-        </div>
-        <div class="hint">Staf masuk memakai email ini — kode OTP 6 digit dikirim ke email mereka (ditampilkan di layar).</div>
-      </div>`;
     return `
     <div class="panel span-2" id="staffPanel">
       <div class="panel-head"><div><div class="panel-title">Staf &amp; role</div>
       <div class="panel-caption">Akun yang boleh masuk ke restoran ini · kelola lewat tombol <b>Nonaktifkan</b>, <b>Wewenang</b>, dan <b>Hapus</b> — setiap perubahan divalidasi server</div></div>
-      ${canCreate ? '<button class="btn btn-primary" data-action="staff-form-toggle">＋ Tambah staf</button>' : ''}</div>
-      ${form}
+      <button class="link-btn" data-action="staff-invite-jump">＋ Undang staf lewat email →</button></div>
       <div class="table-wrap"><table class="staff-table"><thead><tr><th>Nama</th><th>Email</th><th>Role</th><th>Status</th><th>Login terakhir</th><th style="text-align:right">Aksi</th></tr></thead>
       <tbody id="staffBody"><tr><td colspan="6" class="empty-state">Memuat daftar staf…</td></tr></tbody></table></div>
-      <div class="hint">Mencabut wewenang <b>tidak menghapus data</b> — restoran tetap tersinkron, staf hanya kehilangan akses ke modul tersebut. Setiap perubahan tercatat di <b>audit log</b> dan langsung berlaku tanpa staf perlu masuk ulang.</div>
+      <div class="hint">Staf baru <b>tidak ditambahkan manual</b> — gunakan panel <b>Undangan staf (Gmail)</b> di Pengaturan agar calon staf menerima undangan lewat email. Mencabut wewenang <b>tidak menghapus data</b> — restoran tetap tersinkron, staf hanya kehilangan akses ke modul tersebut. Setiap perubahan tercatat di <b>audit log</b> dan langsung berlaku tanpa staf perlu masuk ulang.</div>
     </div>`;
   }
 
@@ -256,7 +245,7 @@ window.RasaRoles = (function () {
     const canUpdate = window.canPerm('staff', 'update');
     const canDelete = window.canPerm('staff', 'delete');
     const canPermEdit = isOwner() && window.canPerm('permissions', 'update');
-    if (!state.staff.length) { body.innerHTML = '<tr><td colspan="6" class="empty-state">Belum ada staf — tambahkan akun pertama.</td></tr>'; return; }
+    if (!state.staff.length) { body.innerHTML = '<tr><td colspan="6" class="empty-state">Belum ada staf — undang calon staf lewat email di panel <b>Undangan staf (Gmail)</b>.</td></tr>'; return; }
     body.innerHTML = state.staff.map(u => {
       const mine = me && u.id === me.id;
       const last = u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : 'Belum pernah';
@@ -399,24 +388,21 @@ window.RasaRoles = (function () {
     }
   }
 
-  /* ---------- 5. Aksi (delegate lewat window.RASA.actions) ---------- */
-  async function staffAdd(arg, el) {
-    if (!window.canPerm('staff', 'create')) { toast('Anda tidak punya izin menambah staf.'); return; }
-    const name = String(($('stName') && $('stName').value || '').trim());
-    const email = String(($('stEmail') && $('stEmail').value || '').trim()).toLowerCase();
-    const role = String(($('stRole') && $('stRole').value || 'waiter'));
-    if (!name) { toast('Nama staf wajib diisi.'); if ($('stName')) $('stName').focus(); return; }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) { toast('Format email tidak valid.'); if ($('stEmail')) $('stEmail').focus(); return; }
-    if (el) { el.disabled = true; }
-    try {
-      const res = await window.RasaAPI.post('/api/staff', { name, email, role });
-      toast(name + ' ditambahkan sebagai ' + (ROLE_LABELS[role] || role) + '.');
-      state.formOpen = false;
-      await loadStaff(true);
-      const form = $('staffForm'); if (form) form.hidden = true;
-      /* audit lokal + server sudah ditulis backend */
-    } catch (e) { toast(e.message); }
-    finally { if (el) el.disabled = false; }
+  /* ---------- 5. Aksi (delegate lewat window.RASA.actions) ----------
+     Form "Tambah staf" sudah dihapus — penambahan staf hanya lewat
+     undangan email (panel Undangan staf di invites.js). */
+  function staffInviteJump() {
+    const panel = document.getElementById('invitePanel');
+    if (!panel) {
+      toast('Panel Undangan staf belum tersedia di halaman Pengaturan.');
+      return;
+    }
+    panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const form = document.getElementById('inviteForm');
+    if (window.canPerm('staff', 'create') && form && form.hidden) {
+      const btn = panel.querySelector('[data-action="invite-form-toggle"]');
+      if (btn) btn.click();
+    }
   }
 
   async function staffToggle(id) {
@@ -450,12 +436,7 @@ window.RasaRoles = (function () {
   }
 
   const actions = {
-    'staff-form-toggle': () => {
-      state.formOpen = !state.formOpen;
-      const f = $('staffForm');
-      if (f) { f.hidden = !state.formOpen; if (state.formOpen) $('stName').focus(); }
-    },
-    'staff-add': (arg, el) => staffAdd(arg, el),
+    'staff-invite-jump': () => staffInviteJump(),
     'staff-toggle': id => staffToggle(id),
     'staff-del': id => staffDelete(id),
     'staff-del-confirm': id => staffDeleteConfirm(id),

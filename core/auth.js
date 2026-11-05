@@ -1,7 +1,8 @@
 /* ============================================================
    RASA Restaurant OS — gerbang akun: email → OTP → sesi
    - Mendaftar: email + nama + nama restoran (opsional kode undangan)
-   - Masuk: email → kode 6 digit (ditampilkan di layar, siap email)
+   - Masuk: email → kode 6 digit yang DIKIRIM KE EMAIL (Gmail) —
+     kode tidak pernah ditampilkan di layar demi keamanan data.
    - Mode lokal tetap tersedia (tanpa sinkronisasi) agar fitur lama
      tidak hilang untuk pengguna tanpa akun.
    ============================================================ */
@@ -11,7 +12,6 @@ window.RasaAuth = (function () {
   let step = 'email';          /* email | otp */
   let purpose = 'login';       /* login | register */
   let pendingEmail = '';
-  let pendingOtp = null;       /* kode dari server (delivery=screen) */
   let resendLeft = 0;
   let resendTimer = null;
   let busy = false;
@@ -40,7 +40,7 @@ window.RasaAuth = (function () {
     const reg = purpose === 'register';
     return `
       <h2 class="gate-title">${reg ? 'Buat akun restoran' : 'Masuk ke akun Anda'}</h2>
-      <p class="gate-sub">${reg ? 'Satu akun untuk semua perangkat — data restoran tersimpan aman di server RASA.' : 'Gunakan email Anda. Kami kirim kode OTP 6 digit.'}</p>
+      <p class="gate-sub">${reg ? 'Satu akun untuk semua perangkat — data restoran tersimpan aman di server RASA.' : 'Gunakan email Anda. Kami kirim kode OTP 6 digit ke email tersebut.'}</p>
       ${msg ? '<div class="gate-alert">' + escHtml(msg) + '</div>' : ''}
       <label class="field"><span>Email</span>
         <input class="input" id="gateEmail" type="email" inputmode="email" autocomplete="email" maxlength="160" placeholder="nama@restoran.com" value="${escHtml(pendingEmail)}"></label>
@@ -62,15 +62,9 @@ window.RasaAuth = (function () {
   function otpStepHtml(msg) {
     return `
       <h2 class="gate-title">Masukkan kode OTP</h2>
-      <p class="gate-sub">Kode dikirim ke <b>${escHtml(pendingEmail)}</b>${purpose === 'register' ? ' untuk membuat akun' : ''} · berlaku 5 menit.</p>
+      <p class="gate-sub">Kode dikirim ke email <b>${escHtml(pendingEmail)}</b>${purpose === 'register' ? ' untuk membuat akun' : ''} · berlaku 5 menit.</p>
       ${msg ? '<div class="gate-alert">' + escHtml(msg) + '</div>' : ''}
-      ${pendingOtp ? `
-      <div class="otp-screen">
-        <small>Kode Anda (pengiriman lewat layar)</small>
-        <b class="otp-code" id="otpShown">${escHtml(pendingOtp)}</b>
-        <button type="button" class="link-btn" data-gate="copy-otp">Salin kode</button>
-      </div>` : `
-      <div class="gate-alert info">Kode dikirim ke email Anda — masukkan 6 digit angka.</div>`}
+      <div class="gate-alert info">Kode 6 digit sudah dikirim ke <b>${escHtml(pendingEmail)}</b>. Buka kotak masuk Gmail Anda (periksa juga folder <b>Spam</b>), lalu masukkan kodenya di bawah. Kode tidak ditampilkan di layar demi keamanan akun.</div>
       <label class="field"><span>Kode 6 digit</span>
         <input class="input otp-input" id="gateCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••"></label>
       <div class="gate-actions">
@@ -118,11 +112,7 @@ window.RasaAuth = (function () {
 
     if (act === 'local') { setGuest(true); hideGate(); toast('Mode lokal — data tersimpan di perangkat ini tanpa sinkronisasi.'); return; }
     if (act === 'toggle-mode') { purpose = purpose === 'register' ? 'login' : 'register'; step = 'email'; renderGate(); return; }
-    if (act === 'back') { step = 'email'; pendingOtp = null; stopResend(); renderGate(); return; }
-    if (act === 'copy-otp') {
-      try { await navigator.clipboard.writeText(pendingOtp || ''); toast('Kode disalin.'); } catch (err) { toast('Gagal menyalin — salin manual: ' + pendingOtp); }
-      return;
-    }
+    if (act === 'back') { step = 'email'; stopResend(); renderGate(); return; }
     if (act === 'send') { await sendOtp(); return; }
     if (act === 'verify') { await verifyOtp(); return; }
     if (act === 'resend') { purpose = pendingEmail && purpose === 'register' ? 'register' : 'login'; await sendOtp(true); return; }
@@ -144,15 +134,14 @@ window.RasaAuth = (function () {
     try {
       const res = await window.RasaAPI.post('/api/auth/request', body);
       pendingEmail = email;
-      pendingOtp = res.otp || null;
       step = 'otp';
       startResend();
       renderGate();
-      if (!isResend) toast('Kode OTP dikirim.');
-      else toast('Kode baru dikirim.');
+      if (!isResend) toast('Kode OTP dikirim ke ' + email + '.');
+      else toast('Kode baru dikirim ke ' + email + '.');
     } catch (err) {
       if (purpose === 'register' && err.status === 404) { /* tetap lanjut */ }
-      renderGate(err.message || 'Gagal mengirim kode. Coba lagi.');
+      renderGate(err.message || 'Gagal mengirim kode ke email. Coba lagi.');
     } finally {
       busy = false;
       setBusy(false);
@@ -230,7 +219,7 @@ window.RasaAuth = (function () {
     try { await window.RasaAPI.post('/api/auth/logout'); } catch (e) {}
     window.RasaSession.clear();
     window.RasaSync.stop();
-    step = 'email'; purpose = 'login'; pendingOtp = null; stopResend();
+    step = 'email'; purpose = 'login'; stopResend();
     applyAccountUI();
     showGate('Anda telah keluar. Data restoran tersimpan di server — masuk lagi dengan email yang sama untuk melanjutkan.');
     toast('Berhasil keluar dari akun.');

@@ -16,7 +16,7 @@ Setiap data yang Anda isi **tersimpan otomatis** — dulu hanya di `localStorage
 
 ## Sinkronisasi mengikuti email
 
-- **Masuk dengan email** (kode OTP 5 menit) → setiap perubahan disimpan ke server di bawah `restaurant_id` milik email tersebut, lalu di-snapshot lokal dengan kunci `restaurant-os:snapshot:<restaurantId>`.
+- **Masuk dengan email** (kode OTP 6 digit, berlaku 5 menit) → kode **dikirim ke alamat Gmail yang sedang login** dan **tidak pernah ditampilkan di layar** maupun dikembalikan oleh API. Bila pengiriman email gagal, permintaan ditolak dengan pesan jelas (kode tidak bocor ke klien). Setiap perubahan disimpan ke server di bawah `restaurant_id` milik email tersebut, lalu di-snapshot lokal dengan kunci `restaurant-os:snapshot:<restaurantId>`.
 - **Perangkat baru / ganti perangkat:** snapshot diambil dari server lebih dulu, jadi data lama tidak menimpa data akun. Perangkat yang terakhir dipakai akun lain otomatis di-reset dulu supaya tidak ada bocor data antar akun.
 - **Akun baru pertama kali di sebuah perangkat** (belum ada data di server): data lokal yang ada didorong ke server sebagai migrasi awal.
 - **Mode lokal (tanpa login):** data hanya tersimpan di perangkat tersebut dan tidak tersambung ke akun mana pun.
@@ -94,7 +94,7 @@ Izin yang sama tetap ditegakkan di backend (`server/permissions.js` + pemeriksaa
 
 ## Undangan staf lewat email (Gmail)
 
-Owner (dan manager dengan izin **Staf**) bisa mengundang calon staf lewat **alamat Gmail** tanpa membuat akun lebih dulu. Undangan disimpan di tabel `staff_invitations` berstatus `pending`, `accepted`, atau `rejected`.
+Owner (dan manager dengan izin **Staf**) bisa mengundang calon staf lewat **alamat Gmail** tanpa membuat akun lebih dulu. Undangan disimpan di tabel `staff_invitations` berstatus `pending`, `accepted`, atau `rejected`. **Undangan inilah satu-satunya cara menambah staf** — panel **Staf & role** tidak lagi memuat form *Tambah staf* (penomboran API `POST /api/staf` tetap tersedia untuk kompatibilitas, tetapi tidak ditampilkan di UI).
 
 **Alur lengkap:**
 
@@ -126,6 +126,26 @@ Status pesanan kini berjalan: **Dibayar → Diproses → Siap → Tersaji** (tah
 
 Halaman **Antar Ke Meja** menampilkan dua kolom sederhana: *Siap diantar* dan *Selesai · tersaji*, plus statistik, status meja terisi (dihitung dari reservasi aktif), dan daftar reservasi berikutnya. Badge di sidebar menunjukkan jumlah yang menunggu Acc; Alert Center punya pintasan langsung ke workspace ini.
 
+## Struk pelanggan (Customer Receipt)
+
+Struk pembayaran untuk pelanggan, dibuka lewat modul `core/receipt.js` — **satu sumber kebenaran: data transaksi yang tersimpan** (`store.orders` / arsip) dan **profil restoran di Pengaturan**. Tidak ada tabel database baru, tidak ada data contoh/statistik, dan tidak ada rumus total yang berbeda dari POS, halaman Pesanan, maupun laporan keuangan.
+
+**Isi struk (urutan):** identitas restoran (logo, nama, alamat, telp/WA, email, website, media sosial) → informasi transaksi (no. struk, tanggal, kasir, pelanggan, no. pesanan, nomor meja, jenis pesanan, channel, no. reservasi) → rincian pesanan (produk, varian, qty, harga satuan, subtotal, catatan) → ringkasan pembayaran (subtotal, diskon, pajak, service charge, biaya tambahan, **TOTAL PEMBAYARAN**) → informasi pembayaran (metode, status, uang dibayarkan, kembalian, no. referensi) → QR verifikasi, ucapan terima kasih, kontak, dan keterangan bukti pembayaran.
+
+**Cara membuka struk:**
+
+- Tombol **🧾 Struk** di kolom **Aksi** tabel riwayat (halaman **Pesanan** dan panel *Pesanan terbaru*),
+- tombol **Lihat struk** pada layar *Pembayaran berhasil*, serta tombol Struk di panel **Pesanan saya**,
+- tautan QR / `#struk=<id>` pada halaman yang sama (memuat detail transaksi asli; bila transaksi tidak ada di perangkat ini, tampil pesan *struk tidak ditemukan*).
+
+**Aksi di dalam pratinjau:** **Cetak 80 mm**, **Cetak 58 mm** (thermal — hanya area struk yang ikut tercetak: sidebar, navbar, tombol, modal, dan chrome dashboard disembunyikan lewat `@media print`), **Unduh PDF** (penulis PDF mandiri, halaman selebar 80 mm, tanpa pustaka eksternal), **WhatsApp**, dan **Email**.
+
+**QR verifikasi** dibuat dengan encoder mandiri (mode byte, EC level M, versi 1–10, GF(256), 8 mask dengan penalti standar) sehingga selalu tersedia tanpa layanan pihak ketiga; matriksnya identik dengan pustaka `qrcode` (Python) dan menunjuk ke `…/#struk=<id>`.
+
+**Kontak di struk** diisi lewat **Pengaturan → Kontak & media sosial restoran** (`restoAddress`, `restoPhone`, `restoEmail`, `restoWebsite`, `restoSocial`) — otomatis tersimpan saat diketik dan menjadi satu-satunya sumber identitas kontak pada struk.
+
+**Data transaksi baru** (checkout POS) kini ikut menyimpan `cashier`, `orderType`, `table`, `discount`, `paid`, `change`, `ref`, `payStatus`, serta `variant` pada tiap item — jadi struk, POS, dan laporan memakai angka yang sama. Diskon dan uang diterima diisi di modal pembayaran; bila uang diterima kurang dari total, pembayaran ditolak (tidak pernah membuat catatan pembayaran yang salah).
+
 ## Modul yang tersedia
 
 - Ringkasan penjualan, channel, pesanan, stok, dan jurnal (semuanya mengikuti data)
@@ -135,6 +155,7 @@ Halaman **Antar Ke Meja** menampilkan dua kolom sederhana: *Siap diantar* dan *S
 - Katalog menu
 - Persediaan dan pengadaan bahan baku
 - Keuangan, Chart of Accounts, jurnal double-entry, audit trail, dan laporan
+- **Struk pelanggan**: pratinjau, cetak thermal 58/80 mm, unduh PDF, bagikan WhatsApp/email, QR verifikasi, dan buka lagi dari riwayat pesanan
 
 ## Deploy ke Cloudflare
 
@@ -142,8 +163,14 @@ Halaman **Antar Ke Meja** menampilkan dua kolom sederhana: *Siap diantar* dan *S
 :: sekali saja bila skema database berubah (mis. menambah tabel user_perms / staff_invitations)
 npx.cmd wrangler d1 execute rasa-restaurant-os-db --remote --file=server\schema.sql
 
+:: WAJIB agar kode OTP login bisa dikirim ke email (tanpa ini permintaan OTP
+:: di produksi ditolak 502 — kode tidak pernah ditampilkan di layar)
+npx.cmd wrangler secret put RESEND_API_KEY
+
 npx.cmd wrangler deploy
 ```
+
+Kode OTP **selalu** dikirim ke email pemakai lewat Resend (`RESEND_API_KEY`) — tidak pernah ditampilkan di layar. Untuk pengembangan lokal, `wrangler dev` membaca `.dev.vars` (memuat `OTP_SCREEN_FALLBACK=1`) supaya skrip uji `.uji-*.ps1` tetap bisa membaca kode tanpa layanan email; **flag itu tidak dipasang di produksi**.
 
 Konfigurasi ada di `wrangler.jsonc`; file `.bat`, `README.md`, `*.ps1`, dan `wrangler.jsonc` tidak ikut ter-upload (lihat `.assetsignore`).
 
@@ -169,16 +196,18 @@ git push -u origin main                 :: GitHub Actions otomatis build & deplo
 
 ### Pengujian otomatis
 
-Lima skrip pengujian dijalankan terhadap `wrangler dev --port 8790 --local` (D1 lokal):
+Enam skrip pengujian dijalankan terhadap `wrangler dev --port 8790 --local` (D1 lokal):
 
 - `.uji-permisi.ps1` — 13 skenario API permission: cabut/kembalikan wewenang per staf (tanpa menyentuh staf lain), validasi ketat modul & aksi, data tetap utuh, tulis & API permission ditolak, preset per role berlaku langsung, serta modul **Antar Ke Meja** (dipilih di Wewenang) sebagai izin alternatif menulis pesanan.
 - `.uji-frontend.ps1` — uji headless Chrome: DOM badge status jadwal, foto `object-fit: contain`, menu/halaman ditolak saat wewenang dicabut, notifikasi pencabutan langsung saat halaman terbuka (poll izin 20 detik), serta data tetap terkirim ke staf yang dicabut.
 - `.uji-kontras.ps1` — mengukur rasio kontras label tombol terhadap latarnya di 6 tema (66 pemeriksaan = 6 tema x 11 jenis tombol, ambang WCAG AA 4.5:1) sekaligus memastikan tulisan tombol selalu berlawanan dengan warna latarnya.
-- `.uji-staf.ps1` — uji headless Chrome dengan sesi login sungguhan: panel Staf &amp; role tampil lengkap (Nonaktifkan, Wewenang, Hapus, Tambah staf), warna keempat tombol staf diukur di 6 tema (24 pemeriksaan, ambang 4.5:1), serta modal **Wewenang** benar-benar terbuka dan memuat centang **Antar Ke Meja** sesuai preset role.
+- `.uji-staf.ps1` — uji headless Chrome dengan sesi login sungguhan: panel Staf &amp; role tampil lengkap (Nonaktifkan, Wewenang, Hapus) dan form **Tambah staf** sudah dihapus (penambahan staf hanya lewat undangan Gmail), warna keempat tombol staf diukur di 6 tema (24 pemeriksaan, ambang 4.5:1), serta modal **Wewenang** benar-benar terbuka dan memuat centang **Antar Ke Meja** sesuai preset role.
 - `.uji-undangan.ps1` — 25+ pemeriksaan alur **undangan staf via Gmail**: undangan dibuat `pending` dengan peran benar, validasi email/role/duplikat, undangan orang lain tidak bocor di `/mine`, notifikasi tampil setelah calon staf mendaftar dengan email yang diundang, pemilik lain ditolak (403), **Terima** menjadikan staf aktif dengan izin role waiter, **Tolak** tanpa keanggotaan, proses ganda ditolak (409), pembatalan oleh owner, dan seluruh alur tercatat di audit log.
 - `.uji-pesanan-staf.ps1` — 25 pemeriksaan **pemesanan menu oleh staf** (API + headless Chrome): preset `kasir` (`orders:update`, `pos:create`, `reservations:update`, `menu` read-only), Kasir memesan produk **bervarian** dari Menu aktif — pilih varian Large → keranjang → bayar — tanpa satu pun toast “tidak punya izin” (dulu seluruh produk bervarian terblokir), struk memakai harga varian, pesanan tercatat di server dan terlihat oleh Owner, tombol mati (Tambah menu, ✎, Kosongkan) tersembunyi, serta uji negatif: staf tanpa izin Pesanan/Antar ditolak di depan dengan pesan jelas.
 
 Folder aset yang disajikan `wrangler dev` bisa dioverride lewat variabel lingkungan `RASA_ASSETS` (default: `%TEMP%\rasa-assets`).
+
+Selain enam skrip di atas, struk pelanggan juga diuji otomatis terhadap frontend statis: matriks QR dibandingkan byte-per-byte dengan pustaka `qrcode` (Python) untuk versi 3/5/7/10, PDF struk divalidasi dengan `pypdf` (halaman 80 mm, isi & margin), serta uji headless Chrome 55 pemeriksaan (buka struk dari riwayat, isi struk = data transaksi, cetak 58/80 mm, `@media print`, PDF, kontak Pengaturan, alur bayar dengan diskon + uang diterima, tampilan 390 px, nol exception JavaScript).
 
 ## Batasan
 
