@@ -14,6 +14,7 @@ import {
   applyUserOverrides, userPermsToRows, diffFromRole, ACTIONS
 } from './permissions.js';
 import { writeAudit } from './audit.js';
+import { deliverMail } from './mailer.js';
 
 const DB = env => env.rasa_restaurant_os_db;
 
@@ -220,47 +221,37 @@ function otpMailHtml(brand, contact, code, purpose) {
    lewat flag OTP_SCREEN_FALLBACK=1 pada .dev.vars wrangler dev —
    tidak pernah aktif di produksi).
 
-   Pengirim memakai nama restoran (default "RASA Restaurant") dan
-   email berisi blok "Asal notifikasi" berupa identitas restoran.
-   Bila layanan email tidak terpasang (RESEND_API_KEY kosong) atau
-   penyedia menolak kiriman, permintaan DITOLAK dengan pesan +
-   alasan yang jelas — kode tetap tidak bocor ke klien.
+   Kanal email dipilih oleh mailer.js: OTP_FROM+Resend (domain
+   terverifikasi) → Gmail SMTP (GMAIL_USER+GMAIL_APP_PASSWORD) →
+   Resend bawaan. Email berisi blok "Asal notifikasi" berupa
+   identitas restoran (nama restoran pemakai, atau nama default
+   "RASA Restaurant" bila belum diisi). Bila semua kanal gagal,
+   permintaan DITOLAK dengan pesan + alasan yang jelas — kode
+   tetap tidak bocor ke klien.
    ============================================================ */
 async function deliverOtp(env, email, code, purpose, brand, contact) {
-  const key = env.RESEND_API_KEY;
-  if (!key) {
-    console.log('otp-email-skipped', 'RESEND_API_KEY belum dipasang');
-    return { ok: false, reason: 'not_configured' };
-  }
-  const fromNameValue = fromName(brand && brand.name);
-  const customFrom = clean(env.OTP_FROM, 120);
-  const from = customFrom || ('"' + fromNameValue + '" <onboarding@resend.dev>');
-  try {
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from,
-        to: [email],
-        subject: 'Kode OTP ' + code + ' — ' + fromNameValue,
-        text: otpMailText(fromNameValue, contact || {}, code, purpose),
-        html: otpMailHtml(fromNameValue, contact || {}, code, purpose)
-      })
-    });
-    if (res.ok) return { ok: true, channel: 'email' };
-    const detail = await res.text();
-    console.log('otp-email-failed', res.status, detail);
-    return { ok: false, reason: 'provider_rejected', status: res.status, detail: String(detail || '').slice(0, 300) };
-  } catch (e) {
-    console.log('otp-email-error', String(e && e.message));
-    return { ok: false, reason: 'provider_error', detail: String(e && e.message || '').slice(0, 200) };
-  }
+  const name = fromName(brand && brand.name);
+  const r = await deliverMail(env, {
+    fromName: name,
+    to: email,
+    subject: 'Kode OTP ' + code + ' — ' + name,
+    text: otpMailText(name, contact || {}, code, purpose),
+    html: otpMailHtml(name, contact || {}, code, purpose)
+  });
+  if (r.ok) return { ok: true, channel: 'email', via: r.via };
+  console.log('otp-email-failed', r.reason, r.status || '', r.detail || '');
+  return { ok: false, reason: r.reason, status: r.status || 0, detail: r.detail || '' };
 }
 
 /* Pesan penolakan yang mudah dipahami pengguna + petunjuk perbaikan. */
 function deliveryErrorMessage(email, brand, delivery) {
   if (delivery.reason === 'not_configured') {
-    return 'Kode OTP belum bisa dikirim oleh ' + brand + ' ke ' + email + ': layanan email restoran belum aktif (RESEND_API_KEY belum dipasang di server). Hubungi pemilik restoran untuk mengaktifkan notifikasi email.';
+    return 'Kode OTP belum bisa dikirim oleh ' + brand + ' ke ' + email + ': layanan email restoran belum aktif (RESEND_API_KEY atau GMAIL_USER/GMAIL_APP_PASSWORD belum dipasang di server). Hubungi pemilik restoran untuk mengaktifkan notifikasi email.';
+  }
+  if (delivery.reason === 'smtp_error') {
+    return 'Kode OTP gagal dikirim oleh ' + brand + ' ke ' + email + ' lewat Gmail: ' +
+      String(delivery.detail || 'gangguan SMTP').slice(0, 160) +
+      '. Periksa GMAIL_USER dan GMAIL_APP_PASSWORD (App Password 16 digit) di server.';
   }
   if (delivery.reason === 'provider_rejected' && delivery.status === 401) {
     return 'Kode OTP gagal dikirim oleh ' + brand + ' ke ' + email + ': API key layanan email ditolak (401). Hubungi pemilik restoran untuk memperbarui RESEND_API_KEY.';

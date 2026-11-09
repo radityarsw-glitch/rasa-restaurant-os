@@ -170,7 +170,28 @@ npx.cmd wrangler secret put RESEND_API_KEY
 npx.cmd wrangler deploy
 ```
 
-Kode OTP **selalu** dikirim ke email pemakai lewat Resend (`RESEND_API_KEY`) — tidak pernah ditampilkan di layar. Untuk pengembangan lokal, `wrangler dev` membaca `.dev.vars` (memuat `OTP_SCREEN_FALLBACK=1`) supaya skrip uji `.uji-*.ps1` tetap bisa membaca kode tanpa layanan email; **flag itu tidak dipasang di produksi**.
+Kode OTP **selalu** dikirim ke email pemakai — tidak pernah ditampilkan di layar. Untuk pengembangan lokal, `wrangler dev` membaca `.dev.vars` (memuat `OTP_SCREEN_FALLBACK=1`) supaya skrip uji `.uji-*.ps1` tetap bisa membaca kode tanpa layanan email; **flag itu tidak dipasang di produksi**.
+
+**Kanal email** (dipilih otomatis oleh `server/mailer.js`, urutan prioritas):
+
+| # | Kondisi | Kanal | Catatan |
+|---|---|---|---|
+| 1 | `OTP_FROM` + `RESEND_API_KEY` | Resend domain terverifikasi | pengirim `RD CAFE <otp@domainanda.com>` |
+| 2 | `GMAIL_USER` + `GMAIL_APP_PASSWORD` | **Gmail SMTP** (port 465) | tanpa domain & tanpa verifikasi DNS — kirim ke alamat Gmail mana pun dari akun Anda |
+| 3 | `RESEND_API_KEY` saja | Resend `onboarding@resend.dev` | mode uji: hanya sampai ke alamat email pemilik akun Resend |
+| 4 | tidak ada | ditolak 502 `not_configured` | kode tidak pernah bocor |
+
+```bat
+:: kanal Gmail SMTP (tanpa domain) — App Password dari akun Google (butuh 2-Step Verification)
+npx.cmd wrangler secret put GMAIL_USER
+npx.cmd wrangler secret put GMAIL_APP_PASSWORD
+
+:: kanal Resend domain terverifikasi (setelah DNS Verified di Resend)
+npx.cmd wrangler secret put OTP_FROM        :: mis. RD CAFE <otp@domainanda.com>
+npx.cmd wrangler secret put RESEND_API_KEY
+```
+
+Kegagalan satu kanal otomatis jatuh ke kanal berikutnya bila tersedia; bila semuanya gagal API menolak 502 dengan alasan spesifik (tanpa membocorkan kode): `not_configured`, `smtp_error` (Gmail), `provider_rejected` (401/403/422), atau `provider_error`.
 
 **Asal notifikasi.** Email OTP dan undangan staf selalu memuat identitas pengirimnya:
 
@@ -178,9 +199,9 @@ Kode OTP **selalu** dikirim ke email pemakai lewat Resend (`RESEND_API_KEY`) —
 - Bila restoran **belum diberi nama**, dipakai nama default **`RASA Restaurant`**.
 - Logika yang sama dipakai di layar: langkah OTP dan toast menampilkan `Asal notifikasi: <nama restoran>`.
 
-**Bila pengiriman gagal**, API menolak 502 dengan alasan spesifik (tanpa membocorkan kode): `not_configured` (RESEND_API_KEY belum dipasang), `provider_rejected` (API key ditolak 401 / alamat pengirim belum diverifikasi 403), atau `provider_error`.
+**Bila pengiriman gagal**, API menolak 502 dengan alasan spesifik (tanpa membocorkan kode): `not_configured` (belum ada kanal email), `smtp_error` (Gmail SMTP), `provider_rejected` (API key ditolak 401 / alamat pengirim belum diverifikasi 403 / mode uji 422), atau `provider_error`.
 
-> Catatan Resend: alamat bawaan `onboarding@resend.dev` hanya boleh mengirim ke alamat email pemilik akun Resend. Untuk mengirim ke alamat Gmail lain, verifikasi domain restoran di Resend lalu tetapkan `OTP_FROM` (secret) dengan domain itu, mis. `RASA <otp@domainanda.com>`.
+> Catatan Resend: alamat bawaan `onboarding@resend.dev` hanya boleh mengirim ke alamat email pemilik akun Resend. Untuk mengirim ke alamat Gmail lain tanpa repot DNS, pakai kanal **Gmail SMTP** (`GMAIL_USER` + `GMAIL_APP_PASSWORD`). Bila ingin pengirim domain sendiri, verifikasi domain di Resend lalu tetapkan `OTP_FROM` (secret) dengan domain itu, mis. `RASA <otp@domainanda.com>`.
 
 Konfigurasi ada di `wrangler.jsonc`; file `.bat`, `README.md`, `*.ps1`, dan `wrangler.jsonc` tidak ikut ter-upload (lihat `.assetsignore`).
 

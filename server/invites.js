@@ -16,6 +16,7 @@
 import { json, err, rid, normEmail, clean, readJson, maskEmail } from './lib.js';
 import { ROLES, roleLabel } from './permissions.js';
 import { requireAuth, loadPerms, publicUser, publicRestaurant, DEFAULT_BRAND, brandContact } from './auth.js';
+import { deliverMail } from './mailer.js';
 import { writeAudit } from './audit.js';
 
 const DB = env => env.rasa_restaurant_os_db;
@@ -77,49 +78,37 @@ function publicInvite(row, withRestaurant) {
    Bila RESEND_API_KEY belum dipasang, undangan tetap tersimpan dan
    tampil sebagai notifikasi di aplikasi ketika calon staf masuk. */
 async function deliverInvite(env, email, restaurantName, role, inviterName, restaurantId) {
-  const key = env.RESEND_API_KEY;
-  if (!key) return 'app';
   const brand = (restaurantName || '').trim() || DEFAULT_BRAND;
   const contact = await brandContact(env, restaurantId || '');
-  const from = clean(env.OTP_FROM, 120) ||
-    ('"' + brand.replace(/["\\<>\r\n]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60) + '" <onboarding@resend.dev>');
   const e = s => String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const origin = [brand, contact.address, contact.phone ? 'Telp/WA: ' + contact.phone : '', contact.website]
     .filter(Boolean).join('\n');
-  try {
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from,
-        to: [email],
-        subject: 'Undangan staf ' + brand + ' — RASA Restaurant OS',
-        text:
-          'Anda diundang untuk menjadi Staf di ' + brand + ' sebagai ' + (roleLabel(role) || role) + '.\n' +
-          (inviterName ? 'Diundang oleh: ' + inviterName + '\n' : '') +
-          '\nAsal notifikasi:\n' + origin + '\n' +
-          '\nMasuk ke aplikasi dengan email ini, lalu tekan Terima atau Tolak pada notifikasi undangan.',
-        html:
-          '<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#111827">' +
-          '<div style="font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:#a97c2c;font-weight:700">RASA Restaurant OS</div>' +
-          '<h2 style="margin:14px 0 6px;font-size:20px">Undangan staf ' + e(brand) + '</h2>' +
-          '<p style="font-size:14px;color:#374151;margin:6px 0">Anda diundang menjadi <b>' + e(roleLabel(role) || role) + '</b>' +
-          (inviterName ? ' oleh <b>' + e(inviterName) + '</b>' : '') + '.</p>' +
-          '<div style="margin-top:16px;padding-top:14px;border-top:1px solid #e5e7eb;font-size:13px"><b>Asal notifikasi</b>' +
-          '<div style="font-weight:700">' + e(brand) + '</div>' +
-          (contact.address ? '<div style="color:#6b7280">' + e(contact.address) + '</div>' : '') +
-          (contact.phone ? '<div style="color:#6b7280">' + e(contact.phone) + '</div>' : '') +
-          (contact.website ? '<div style="color:#6b7280">' + e(contact.website) + '</div>' : '') +
-          '</div>' +
-          '<div style="margin-top:14px;font-size:12px;color:#9ca3af">Masuk ke aplikasi dengan email ini, lalu tekan Terima atau Tolak pada notifikasi undangan.</div>' +
-          '</div>'
-      })
-    });
-    if (res.ok) return 'email';
-    console.log('invite-email-failed', res.status, await res.text());
-  } catch (e) {
-    console.log('invite-email-error', String(e && e.message));
-  }
+  const r = await deliverMail(env, {
+    fromName: brand,
+    to: email,
+    subject: 'Undangan staf ' + brand + ' — RASA Restaurant OS',
+    text:
+      'Anda diundang untuk menjadi Staf di ' + brand + ' sebagai ' + (roleLabel(role) || role) + '.\n' +
+      (inviterName ? 'Diundang oleh: ' + inviterName + '\n' : '') +
+      '\nAsal notifikasi:\n' + origin + '\n' +
+      '\nMasuk ke aplikasi dengan email ini, lalu tekan Terima atau Tolak pada notifikasi undangan.',
+    html:
+      '<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#111827">' +
+      '<div style="font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:#a97c2c;font-weight:700">RASA Restaurant OS</div>' +
+      '<h2 style="margin:14px 0 6px;font-size:20px">Undangan staf ' + e(brand) + '</h2>' +
+      '<p style="font-size:14px;color:#374151;margin:6px 0">Anda diundang menjadi <b>' + e(roleLabel(role) || role) + '</b>' +
+      (inviterName ? ' oleh <b>' + e(inviterName) + '</b>' : '') + '.</p>' +
+      '<div style="margin-top:16px;padding-top:14px;border-top:1px solid #e5e7eb;font-size:13px"><b>Asal notifikasi</b>' +
+      '<div style="font-weight:700">' + e(brand) + '</div>' +
+      (contact.address ? '<div style="color:#6b7280">' + e(contact.address) + '</div>' : '') +
+      (contact.phone ? '<div style="color:#6b7280">' + e(contact.phone) + '</div>' : '') +
+      (contact.website ? '<div style="color:#6b7280">' + e(contact.website) + '</div>' : '') +
+      '</div>' +
+      '<div style="margin-top:14px;font-size:12px;color:#9ca3af">Masuk ke aplikasi dengan email ini, lalu tekan Terima atau Tolak pada notifikasi undangan.</div>' +
+      '</div>'
+  });
+  if (r.ok) return 'email';
+  console.log('invite-email-failed', r.reason, r.status || '', r.detail || '');
   return 'app';
 }
 
