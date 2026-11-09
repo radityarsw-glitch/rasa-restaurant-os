@@ -172,6 +172,16 @@ npx.cmd wrangler deploy
 
 Kode OTP **selalu** dikirim ke email pemakai lewat Resend (`RESEND_API_KEY`) — tidak pernah ditampilkan di layar. Untuk pengembangan lokal, `wrangler dev` membaca `.dev.vars` (memuat `OTP_SCREEN_FALLBACK=1`) supaya skrip uji `.uji-*.ps1` tetap bisa membaca kode tanpa layanan email; **flag itu tidak dipasang di produksi**.
 
+**Asal notifikasi.** Email OTP dan undangan staf selalu memuat identitas pengirimnya:
+
+- Nama restoran pemakai (bila sudah diisi lewat **Pengaturan → Nama restoran** atau saat mendaftar) tampil pada header `From`, subjek, dan blok **"Asal notifikasi"** (nama + alamat + telepon + website dari Pengaturan → Kontak).
+- Bila restoran **belum diberi nama**, dipakai nama default **`RASA Restaurant`**.
+- Logika yang sama dipakai di layar: langkah OTP dan toast menampilkan `Asal notifikasi: <nama restoran>`.
+
+**Bila pengiriman gagal**, API menolak 502 dengan alasan spesifik (tanpa membocorkan kode): `not_configured` (RESEND_API_KEY belum dipasang), `provider_rejected` (API key ditolak 401 / alamat pengirim belum diverifikasi 403), atau `provider_error`.
+
+> Catatan Resend: alamat bawaan `onboarding@resend.dev` hanya boleh mengirim ke alamat email pemilik akun Resend. Untuk mengirim ke alamat Gmail lain, verifikasi domain restoran di Resend lalu tetapkan `OTP_FROM` (secret) dengan domain itu, mis. `RASA <otp@domainanda.com>`.
+
 Konfigurasi ada di `wrangler.jsonc`; file `.bat`, `README.md`, `*.ps1`, dan `wrangler.jsonc` tidak ikut ter-upload (lihat `.assetsignore`).
 
 > Catatan: gunakan `npx.cmd` (bukan `npx`) bila dijalankan lewat PowerShell dengan execution policy default.

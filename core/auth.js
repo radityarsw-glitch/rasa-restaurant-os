@@ -12,6 +12,7 @@ window.RasaAuth = (function () {
   let step = 'email';          /* email | otp */
   let purpose = 'login';       /* login | register */
   let pendingEmail = '';
+  let pendingBrand = '';      /* nama restoran asal pengiriman kode */
   let resendLeft = 0;
   let resendTimer = null;
   let busy = false;
@@ -60,11 +61,13 @@ window.RasaAuth = (function () {
   }
 
   function otpStepHtml(msg) {
+    const brand = pendingBrand || 'RASA Restaurant';
     return `
       <h2 class="gate-title">Masukkan kode OTP</h2>
       <p class="gate-sub">Kode dikirim ke email <b>${escHtml(pendingEmail)}</b>${purpose === 'register' ? ' untuk membuat akun' : ''} · berlaku 5 menit.</p>
       ${msg ? '<div class="gate-alert">' + escHtml(msg) + '</div>' : ''}
       <div class="gate-alert info">Kode 6 digit sudah dikirim ke <b>${escHtml(pendingEmail)}</b>. Buka kotak masuk Gmail Anda (periksa juga folder <b>Spam</b>), lalu masukkan kodenya di bawah. Kode tidak ditampilkan di layar demi keamanan akun.</div>
+      <div class="gate-brandline"><span class="gb-mark">⌂</span><span>Asal notifikasi: <b>${escHtml(brand)}</b></span></div>
       <label class="field"><span>Kode 6 digit</span>
         <input class="input otp-input" id="gateCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••"></label>
       <div class="gate-actions">
@@ -134,11 +137,13 @@ window.RasaAuth = (function () {
     try {
       const res = await window.RasaAPI.post('/api/auth/request', body);
       pendingEmail = email;
+      pendingBrand = (res && res.brand) || '';
       step = 'otp';
       startResend();
       renderGate();
-      if (!isResend) toast('Kode OTP dikirim ke ' + email + '.');
-      else toast('Kode baru dikirim ke ' + email + '.');
+      const from = pendingBrand || 'RASA Restaurant';
+      if (!isResend) toast('Kode OTP dikirim ke ' + email + ' oleh ' + from + '.');
+      else toast('Kode baru dikirim ke ' + email + ' oleh ' + from + '.');
     } catch (err) {
       if (purpose === 'register' && err.status === 404) { /* tetap lanjut */ }
       renderGate(err.message || 'Gagal mengirim kode ke email. Coba lagi.');

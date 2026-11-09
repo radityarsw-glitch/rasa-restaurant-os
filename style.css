@@ -1505,6 +1505,11 @@ html.gate-open,html.gate-open body{overflow:hidden}
 .gate-alert{font-size:11px;padding:9px 12px;border-radius:10px;background:rgba(192,86,63,.1);color:var(--red);
   border:1px solid rgba(192,86,63,.28);margin-bottom:12px;line-height:1.55}
 .gate-alert.info{background:var(--gold-tint);color:var(--ink-soft);border-color:var(--line)}
+.gate-brandline{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);
+  background:var(--paper,#faf8f5);border:1px dashed var(--line);border-radius:10px;padding:8px 12px;margin-bottom:13px;line-height:1.5}
+.gate-brandline b{color:var(--ink-soft);overflow-wrap:anywhere}
+.gate-brandline .gb-mark{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;
+  border-radius:50%;background:var(--gold-tint);color:var(--gold,#a97c2c);font-size:11px;flex:0 0 auto}
 .gate-actions{margin-top:2px}
 .btn-block{width:100%;justify-content:center}
 .btn.is-loading{opacity:.75;pointer-events:none}

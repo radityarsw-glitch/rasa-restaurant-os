@@ -123,6 +123,96 @@ export function requirePerm(a, module, action) {
 }
 
 /* ============================================================
+   Identitas pengirim notifikasi (asal email OTP)
+
+   Nama restoran diambil dari data restoran milik akun; bila restoran
+   belum diberi nama dipakai nama yang diketik saat mendaftar /
+   nama restoran tujuan undangan; kalau tidak ada juga, dipakai nama
+   default "RASA Restaurant".
+   ============================================================ */
+export const DEFAULT_BRAND = 'RASA Restaurant';
+
+async function brandOf(env, email, hint) {
+  try {
+    const u = await DB(env).prepare('SELECT restaurant_id FROM users WHERE email = ?').bind(email).first();
+    if (u && u.restaurant_id) {
+      const r = await DB(env).prepare('SELECT id,name FROM restaurants WHERE id = ?').bind(u.restaurant_id).first();
+      if (r) {
+        const n = clean(r.name, 60);
+        /* restoran ada tapi belum diberi nama -> nama default */
+        return { name: n || DEFAULT_BRAND, restaurantId: r.id, named: !!n };
+      }
+    }
+  } catch (e) { console.log('brand-lookup-failed', String(e && e.message)); }
+  const h = clean(hint, 60);
+  return h ? { name: h, restaurantId: '', named: true } : { name: DEFAULT_BRAND, restaurantId: '', named: false };
+}
+
+/* Kontak restoran (workspace) untuk blok "Asal notifikasi" pada email. */
+async function brandContact(env, restaurantId) {
+  const out = { address: '', phone: '', website: '' };
+  if (!restaurantId) return out;
+  try {
+    const w = await DB(env).prepare('SELECT payload FROM workspace WHERE restaurant_id = ?').bind(restaurantId).first();
+    const p = w ? safeParse(w.payload) : null;
+    if (p) {
+      out.address = clean(p.restoAddress, 90) || clean(p.restaurantLocation, 80);
+      out.phone = clean(p.restoPhone, 24);
+      out.website = clean(p.restoWebsite, 80);
+    }
+  } catch (e) { /* kontak bersifat pelengkap — diabaikan bila gagal */ }
+  return out;
+}
+export { brandContact };
+
+/* Nama tampilan pengirim — aman untuk header From (tanpa kutip / sudut
+   kurung / baris baru, maksimum 60 karakter). */
+function fromName(brandName) {
+  return (String(brandName || '').replace(/["\\<>\r\n]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60)) || DEFAULT_BRAND;
+}
+
+/* Isi email OTP: kode + data asal notifikasi (siapa yang mengirim). */
+function otpMailText(brand, contact, code, purpose) {
+  const origin = [brand, contact.address, contact.phone ? 'Telp/WA: ' + contact.phone : '', contact.website]
+    .filter(Boolean).join('\n');
+  return [
+    'Halo,',
+    '',
+    'Kode verifikasi ' + brand + ': ' + code,
+    '',
+    'Asal notifikasi:',
+    origin,
+    '',
+    'Tujuan: ' + (purpose === 'register' ? 'membuat akun baru' : 'masuk ke akun Anda') + '.',
+    'Berlaku 5 menit dan hanya bisa dipakai satu kali.',
+    'Jika Anda tidak meminta kode ini, abaikan email ini.',
+    '',
+    '— dikirim otomatis oleh RASA Restaurant OS'
+  ].join('\n');
+}
+
+function otpMailHtml(brand, contact, code, purpose) {
+  const e = s => String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const rows = [
+    contact.address ? '<div style="color:#6b7280">' + e(contact.address) + '</div>' : '',
+    contact.phone ? '<div style="color:#6b7280">' + e(contact.phone) + '</div>' : '',
+    contact.website ? '<div style="color:#6b7280">' + e(contact.website) + '</div>' : ''
+  ].join('');
+  return (
+    '<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#111827">' +
+    '<div style="font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:#a97c2c;font-weight:700">RASA Restaurant OS</div>' +
+    '<h2 style="margin:14px 0 4px;font-size:20px">Kode verifikasi ' + e(brand) + '</h2>' +
+    '<div style="font-size:32px;letter-spacing:.3em;font-weight:700;background:#f6f4f0;border:1px dashed #d9d2c5;border-radius:10px;padding:14px 18px;margin:16px 0;text-align:center">' + e(code) + '</div>' +
+    '<div style="font-size:14px;color:#374151">Tujuan: ' + (purpose === 'register' ? 'membuat akun baru' : 'masuk ke akun Anda') + '. Berlaku 5 menit, sekali pakai.</div>' +
+    '<div style="margin-top:18px;padding-top:14px;border-top:1px solid #e5e7eb;font-size:13px">' +
+    '<b>Asal notifikasi</b><div style="font-weight:700">' + e(brand) + '</div>' + rows +
+    '</div>' +
+    '<div style="margin-top:14px;font-size:12px;color:#9ca3af">Jika Anda tidak meminta kode ini, abaikan email ini. — dikirim otomatis oleh RASA Restaurant OS</div>' +
+    '</div>'
+  );
+}
+
+/* ============================================================
    Pengiriman OTP — SELALU lewat email (Gmail) ke alamat yang login.
 
    Keamanan: kode TIDAK PERNAH dikembalikan ke layar maupun ke
@@ -130,37 +220,56 @@ export function requirePerm(a, module, action) {
    lewat flag OTP_SCREEN_FALLBACK=1 pada .dev.vars wrangler dev —
    tidak pernah aktif di produksi).
 
+   Pengirim memakai nama restoran (default "RASA Restaurant") dan
+   email berisi blok "Asal notifikasi" berupa identitas restoran.
    Bila layanan email tidak terpasang (RESEND_API_KEY kosong) atau
-   pengiriman gagal, permintaan ditolak dengan pesan jelas — kode
-   tetap tidak bocor ke klien.
+   penyedia menolak kiriman, permintaan DITOLAK dengan pesan +
+   alasan yang jelas — kode tetap tidak bocor ke klien.
    ============================================================ */
-async function deliverOtp(env, email, code, purpose) {
+async function deliverOtp(env, email, code, purpose, brand, contact) {
   const key = env.RESEND_API_KEY;
   if (!key) {
     console.log('otp-email-skipped', 'RESEND_API_KEY belum dipasang');
-    return null;
+    return { ok: false, reason: 'not_configured' };
   }
+  const fromNameValue = fromName(brand && brand.name);
+  const customFrom = clean(env.OTP_FROM, 120);
+  const from = customFrom || ('"' + fromNameValue + '" <onboarding@resend.dev>');
   try {
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from: env.OTP_FROM || 'RASA Restaurant OS <onboarding@resend.dev>',
+        from,
         to: [email],
-        subject: code + ' adalah kode OTP Anda — RASA Restaurant OS',
-        text:
-          'Kode verifikasi Anda: ' + code + '\n\n' +
-          'Berlaku 5 menit dan hanya bisa dipakai satu kali. ' +
-          (purpose === 'register' ? 'Kode ini dipakai untuk membuat akun baru.' : 'Kode ini dipakai untuk masuk ke akun Anda.') +
-          '\n\nJika Anda tidak meminta kode ini, abaikan email ini.'
+        subject: 'Kode OTP ' + code + ' — ' + fromNameValue,
+        text: otpMailText(fromNameValue, contact || {}, code, purpose),
+        html: otpMailHtml(fromNameValue, contact || {}, code, purpose)
       })
     });
-    if (res.ok) return 'email';
-    console.log('otp-email-failed', res.status, await res.text());
+    if (res.ok) return { ok: true, channel: 'email' };
+    const detail = await res.text();
+    console.log('otp-email-failed', res.status, detail);
+    return { ok: false, reason: 'provider_rejected', status: res.status, detail: String(detail || '').slice(0, 300) };
   } catch (e) {
     console.log('otp-email-error', String(e && e.message));
+    return { ok: false, reason: 'provider_error', detail: String(e && e.message || '').slice(0, 200) };
   }
-  return null;
+}
+
+/* Pesan penolakan yang mudah dipahami pengguna + petunjuk perbaikan. */
+function deliveryErrorMessage(email, brand, delivery) {
+  if (delivery.reason === 'not_configured') {
+    return 'Kode OTP belum bisa dikirim oleh ' + brand + ' ke ' + email + ': layanan email restoran belum aktif (RESEND_API_KEY belum dipasang di server). Hubungi pemilik restoran untuk mengaktifkan notifikasi email.';
+  }
+  if (delivery.reason === 'provider_rejected' && delivery.status === 401) {
+    return 'Kode OTP gagal dikirim oleh ' + brand + ' ke ' + email + ': API key layanan email ditolak (401). Hubungi pemilik restoran untuk memperbarui RESEND_API_KEY.';
+  }
+  if (delivery.reason === 'provider_rejected' && delivery.status === 403) {
+    return 'Kode OTP gagal dikirim oleh ' + brand + ' ke ' + email + ': alamat pengirim (from) belum diverifikasi di penyedia email. Verifikasi domain restoran atau atur OTP_FROM.';
+  }
+  return 'Kode OTP gagal dikirim oleh ' + brand + ' ke ' + email + ' karena layanan email bermasalah' +
+    (delivery.status ? ' (status ' + delivery.status + ')' : '') + '. Coba lagi beberapa saat, atau hubungi pemilik restoran.';
 }
 
 /* Mode pengembangan lokal (wrangler dev + .dev.vars): kode boleh
@@ -222,28 +331,42 @@ export async function requestOtp(req, env) {
   /* kode OTP 6 digit — disimpan sebagai hash, sekali pakai, punya masa berlaku */
   const code = randomDigits(6);
   const id = rid('otp');
+
+  /* identitas asal notifikasi: nama restoran pemakai, nama restoran
+     tujuan undangan / nama restoran saat daftar, atau default */
+  const brand = await brandOf(env, email, inviteRestaurant ? inviteRestaurant.name : resto);
+  const contact = await brandContact(env, brand.restaurantId);
+
   const payload = JSON.stringify({
     purpose,
     name: name || (user && user.name) || '',
     resto,
     role: purpose === 'register' ? (ROLES.some(r => r.id === roleReq) && roleReq !== 'owner' ? roleReq : (inviteRestaurant ? 'waiter' : 'owner')) : '',
     invite: inviteRestaurant ? inviteRestaurant.id : '',
-    inviteName: inviteRestaurant ? inviteRestaurant.name : ''
+    inviteName: inviteRestaurant ? inviteRestaurant.name : '',
+    brand: brand.name
   });
 
   /* Kirim dulu ke email (Gmail) — bila pengiriman gagal, kode lama yang
      masih berlaku tidak ikut dibatalkan dan tidak ada kode baru tersimpan. */
-  const channel = screenFallback(env) ? 'screen' : await deliverOtp(env, email, code, purpose);
+  const delivery = screenFallback(env)
+    ? { ok: true, channel: 'screen' }
+    : await deliverOtp(env, email, code, purpose, brand, contact);
 
   /* Kode HANYA dikembalikan pada mode pengembangan lokal. Di produksi
      kode selalu dikirim ke email dan tidak pernah masuk response. */
-  if (!channel) {
-    return err(
-      'Kode OTP gagal dikirim ke ' + email + '. Layanan email restoran belum aktif (RESEND_API_KEY) atau sedang bermasalah — hubungi pemilik restoran.',
-      502,
-      { code: 'otp_delivery_failed', field: 'email' }
-    );
+  if (!delivery.ok) {
+    console.log('otp-delivery-rejected', email, brand.name, delivery.reason, delivery.status || '');
+    return err(deliveryErrorMessage(email, brand.name, delivery), 502, {
+      code: 'otp_delivery_failed',
+      field: 'email',
+      reason: delivery.reason,
+      brand: brand.name,
+      providerStatus: delivery.status || 0,
+      provider: delivery.detail || ''
+    });
   }
+  const channel = delivery.channel;
 
   /* OTP lama yang belum dipakai untuk email+purpose sama dibatalkan */
   await DB(env)
@@ -260,6 +383,7 @@ export async function requestOtp(req, env) {
     email,
     purpose,
     delivery: channel,
+    brand: brand.name,
     expiresAt: now + OTP_TTL,
     otp: channel === 'screen' ? code : null
   });
