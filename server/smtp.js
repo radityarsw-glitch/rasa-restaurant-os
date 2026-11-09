@@ -4,8 +4,9 @@
    AUTH LOGIN (base64) → MAIL FROM → RCPT TO → DATA (pesan MIME
    multipart/alternative teks+HTML, UTF-8) → QUIT.
 
-   Dipakai bila GMAIL_USER + GMAIL_APP_PASSWORD terpasang —
-   pengiriman tanpa domain, tanpa verifikasi DNS.
+   Dipakai bila SMTP_USER + SMTP_PASSWORD (atau alias lama
+   GMAIL_USER + GMAIL_APP_PASSWORD) terpasang — pengiriman
+   tanpa domain, tanpa verifikasi DNS.
 
    `deps.connect` bersifat opsional: hanya dipakai skrip uji lokal
    untuk menyambungkan ke server SMTP palsu tanpa jaringan.
@@ -72,7 +73,7 @@ export async function smtpSend(opts, deps) {
   const pass = String(opts.pass || '');
   const to = String(opts.to || '').trim();
 
-  if (!user || !pass) throw new Error('GMAIL_USER / GMAIL_APP_PASSWORD belum dipasang');
+  if (!user || !pass) throw new Error('SMTP_USER / SMTP_PASSWORD belum dipasang');
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) throw new Error('alamat tujuan tidak valid');
 
   const open = (deps && deps.connect) || (await import('./net.js')).connect;
@@ -130,7 +131,9 @@ export async function smtpSend(opts, deps) {
     await cmd('AUTH LOGIN', [334], 'AUTH LOGIN');
     await cmd(b64(user), [334], 'AUTH username');
     await cmd(b64(pass), [235], 'AUTH password');
-    await cmd('MAIL FROM:<' + user + '>', [250], 'MAIL FROM');
+    /* MAIL FROM memakai alamat pengirim terverifikasi (opts.fromAddr),
+       bukan otentikasi — Brevo/Gmail memisahkan keduanya */
+    await cmd('MAIL FROM:<' + (String(opts.fromAddr || '').trim() || user) + '>', [250], 'MAIL FROM');
     await cmd('RCPT TO:<' + to + '>', [250, 251], 'RCPT TO');
     await cmd('DATA', [354], 'DATA');
 

@@ -177,21 +177,24 @@ Kode OTP **selalu** dikirim ke email pemakai — tidak pernah ditampilkan di lay
 | # | Kondisi | Kanal | Catatan |
 |---|---|---|---|
 | 1 | `OTP_FROM` + `RESEND_API_KEY` | Resend domain terverifikasi | pengirim `RD CAFE <otp@domainanda.com>` |
-| 2 | `GMAIL_USER` + `GMAIL_APP_PASSWORD` | **Gmail SMTP** (port 465) | tanpa domain & tanpa verifikasi DNS — kirim ke alamat Gmail mana pun dari akun Anda |
+| 2 | `SMTP_USER` + `SMTP_PASSWORD` | **SMTP generik** — Brevo/Gmail/provider apa pun (port 465) | tanpa domain & tanpa verifikasi DNS; host diatur `SMTP_HOST`/`SMTP_PORT`, pengirim terverifikasi `SMTP_FROM` (alias lama `GMAIL_USER`/`GMAIL_APP_PASSWORD` tetap didukung) |
 | 3 | `RESEND_API_KEY` saja | Resend `onboarding@resend.dev` | mode uji: hanya sampai ke alamat email pemilik akun Resend |
 | 4 | tidak ada | ditolak 502 `not_configured` | kode tidak pernah bocor |
 
 ```bat
-:: kanal Gmail SMTP (tanpa domain) — App Password dari akun Google (butuh 2-Step Verification)
-npx.cmd wrangler secret put GMAIL_USER
-npx.cmd wrangler secret put GMAIL_APP_PASSWORD
+:: kanal SMTP generik (tanpa domain) — mis. Brevo: smtp-relay.brevo.com:465
+npx.cmd wrangler secret put SMTP_HOST       :: smtp-relay.brevo.com
+npx.cmd wrangler secret put SMTP_PORT       :: 465
+npx.cmd wrangler secret put SMTP_USER       :: Login Brevo (halaman SMTP & API)
+npx.cmd wrangler secret put SMTP_PASSWORD   :: SMTP Key Brevo
+npx.cmd wrangler secret put SMTP_FROM       :: alamat sender terverifikasi Brevo
 
 :: kanal Resend domain terverifikasi (setelah DNS Verified di Resend)
 npx.cmd wrangler secret put OTP_FROM        :: mis. RD CAFE <otp@domainanda.com>
 npx.cmd wrangler secret put RESEND_API_KEY
 ```
 
-Kegagalan satu kanal otomatis jatuh ke kanal berikutnya bila tersedia; bila semuanya gagal API menolak 502 dengan alasan spesifik (tanpa membocorkan kode): `not_configured`, `smtp_error` (Gmail), `provider_rejected` (401/403/422), atau `provider_error`.
+Kegagalan satu kanal otomatis jatuh ke kanal berikutnya bila tersedia; bila semuanya gagal API menolak 502 dengan alasan spesifik (tanpa membocorkan kode): `not_configured`, `smtp_error` (SMTP), `provider_rejected` (401/403/422), atau `provider_error`.
 
 **Asal notifikasi.** Email OTP dan undangan staf selalu memuat identitas pengirimnya:
 
@@ -199,9 +202,9 @@ Kegagalan satu kanal otomatis jatuh ke kanal berikutnya bila tersedia; bila semu
 - Bila restoran **belum diberi nama**, dipakai nama default **`RASA Restaurant`**.
 - Logika yang sama dipakai di layar: langkah OTP dan toast menampilkan `Asal notifikasi: <nama restoran>`.
 
-**Bila pengiriman gagal**, API menolak 502 dengan alasan spesifik (tanpa membocorkan kode): `not_configured` (belum ada kanal email), `smtp_error` (Gmail SMTP), `provider_rejected` (API key ditolak 401 / alamat pengirim belum diverifikasi 403 / mode uji 422), atau `provider_error`.
+**Bila pengiriman gagal**, API menolak 502 dengan alasan spesifik (tanpa membocorkan kode): `not_configured` (belum ada kanal email), `smtp_error` (SMTP), `provider_rejected` (API key ditolak 401 / alamat pengirim belum diverifikasi 403 / mode uji 422), atau `provider_error`.
 
-> Catatan Resend: alamat bawaan `onboarding@resend.dev` hanya boleh mengirim ke alamat email pemilik akun Resend. Untuk mengirim ke alamat Gmail lain tanpa repot DNS, pakai kanal **Gmail SMTP** (`GMAIL_USER` + `GMAIL_APP_PASSWORD`). Bila ingin pengirim domain sendiri, verifikasi domain di Resend lalu tetapkan `OTP_FROM` (secret) dengan domain itu, mis. `RASA <otp@domainanda.com>`.
+> Catatan Resend: alamat bawaan `onboarding@resend.dev` hanya boleh mengirim ke alamat email pemilik akun Resend. Untuk mengirim ke alamat Gmail lain tanpa repot DNS, pakai kanal **SMTP generik** (`SMTP_USER` + `SMTP_PASSWORD`, mis. Brevo `smtp-relay.brevo.com`). Bila ingin pengirim domain sendiri, verifikasi domain di Resend lalu tetapkan `OTP_FROM` (secret) dengan domain itu, mis. `RASA <otp@domainanda.com>`.
 
 Konfigurasi ada di `wrangler.jsonc`; file `.bat`, `README.md`, `*.ps1`, dan `wrangler.jsonc` tidak ikut ter-upload (lihat `.assetsignore`).
 

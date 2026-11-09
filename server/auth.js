@@ -222,8 +222,8 @@ function otpMailHtml(brand, contact, code, purpose) {
    tidak pernah aktif di produksi).
 
    Kanal email dipilih oleh mailer.js: OTP_FROM+Resend (domain
-   terverifikasi) → Gmail SMTP (GMAIL_USER+GMAIL_APP_PASSWORD) →
-   Resend bawaan. Email berisi blok "Asal notifikasi" berupa
+   terverifikasi) → SMTP generik (SMTP_USER+SMTP_PASSWORD, mis.
+   Brevo/Gmail) → Resend bawaan. Email berisi blok "Asal notifikasi" berupa
    identitas restoran (nama restoran pemakai, atau nama default
    "RASA Restaurant" bila belum diisi). Bila semua kanal gagal,
    permintaan DITOLAK dengan pesan + alasan yang jelas — kode
@@ -246,12 +246,12 @@ async function deliverOtp(env, email, code, purpose, brand, contact) {
 /* Pesan penolakan yang mudah dipahami pengguna + petunjuk perbaikan. */
 function deliveryErrorMessage(email, brand, delivery) {
   if (delivery.reason === 'not_configured') {
-    return 'Kode OTP belum bisa dikirim oleh ' + brand + ' ke ' + email + ': layanan email restoran belum aktif (RESEND_API_KEY atau GMAIL_USER/GMAIL_APP_PASSWORD belum dipasang di server). Hubungi pemilik restoran untuk mengaktifkan notifikasi email.';
+    return 'Kode OTP belum bisa dikirim oleh ' + brand + ' ke ' + email + ': layanan email restoran belum aktif (RESEND_API_KEY atau SMTP_USER/SMTP_PASSWORD belum dipasang di server). Hubungi pemilik restoran untuk mengaktifkan notifikasi email.';
   }
   if (delivery.reason === 'smtp_error') {
-    return 'Kode OTP gagal dikirim oleh ' + brand + ' ke ' + email + ' lewat Gmail: ' +
+    return 'Kode OTP gagal dikirim oleh ' + brand + ' ke ' + email + ' lewat SMTP: ' +
       String(delivery.detail || 'gangguan SMTP').slice(0, 160) +
-      '. Periksa GMAIL_USER dan GMAIL_APP_PASSWORD (App Password 16 digit) di server.';
+      '. Periksa SMTP_HOST, SMTP_USER dan SMTP_PASSWORD di server.';
   }
   if (delivery.reason === 'provider_rejected' && delivery.status === 401) {
     return 'Kode OTP gagal dikirim oleh ' + brand + ' ke ' + email + ': API key layanan email ditolak (401). Hubungi pemilik restoran untuk memperbarui RESEND_API_KEY.';
