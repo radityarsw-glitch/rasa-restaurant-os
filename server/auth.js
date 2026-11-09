@@ -268,6 +268,13 @@ function deliveryErrorMessage(email, brand, delivery) {
   if (delivery.reason === 'provider_rejected' && delivery.status === 403) {
     return 'Kode OTP gagal dikirim oleh ' + brand + ' ke ' + email + ': alamat pengirim (from) belum diverifikasi di penyedia email. Verifikasi domain restoran atau atur OTP_FROM.';
   }
+  /* mode uji Resend (pengirim onboarding@resend.dev): hanya boleh kirim
+     ke alamat email pemilik akun Resend sampai domain diverifikasi */
+  if (delivery.reason === 'provider_rejected' &&
+      (delivery.status === 422 || /testing email address|only send test email/i.test(delivery.detail || ''))) {
+    return 'Kode OTP gagal dikirim oleh ' + brand + ' ke ' + email + ': layanan email masih mode uji sehingga hanya bisa dikirim ke alamat email pemilik akun Resend. ' +
+      'Untuk mengirim ke semua alamat Gmail, verifikasi domain restoran di Resend lalu pasang secret OTP_FROM (mis. "RASA <otp@domainanda.com>"), atau hubungi pemilik restoran.';
+  }
   return 'Kode OTP gagal dikirim oleh ' + brand + ' ke ' + email + ' karena layanan email bermasalah' +
     (delivery.status ? ' (status ' + delivery.status + ')' : '') + '. Coba lagi beberapa saat, atau hubungi pemilik restoran.';
 }
