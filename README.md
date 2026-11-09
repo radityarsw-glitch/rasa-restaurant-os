@@ -177,14 +177,14 @@ Kode OTP **selalu** dikirim ke email pemakai — tidak pernah ditampilkan di lay
 | # | Kondisi | Kanal | Catatan |
 |---|---|---|---|
 | 1 | `OTP_FROM` + `RESEND_API_KEY` | Resend domain terverifikasi | pengirim `RD CAFE <otp@domainanda.com>` |
-| 2 | `SMTP_USER` + `SMTP_PASSWORD` | **SMTP generik** — Brevo/Gmail/provider apa pun (port 465) | tanpa domain & tanpa verifikasi DNS; host diatur `SMTP_HOST`/`SMTP_PORT`, pengirim terverifikasi `SMTP_FROM` (alias lama `GMAIL_USER`/`GMAIL_APP_PASSWORD` tetap didukung) |
+| 2 | `SMTP_USER` + `SMTP_PASSWORD` | **SMTP generik** — Brevo/Gmail/provider apa pun (port 465 TLS / 587 STARTTLS) | tanpa domain & tanpa verifikasi DNS; host diatur `SMTP_HOST`/`SMTP_PORT`, pengirim terverifikasi `SMTP_FROM` (alias lama `GMAIL_USER`/`GMAIL_APP_PASSWORD` tetap didukung) |
 | 3 | `RESEND_API_KEY` saja | Resend `onboarding@resend.dev` | mode uji: hanya sampai ke alamat email pemilik akun Resend |
 | 4 | tidak ada | ditolak 502 `not_configured` | kode tidak pernah bocor |
 
 ```bat
-:: kanal SMTP generik (tanpa domain) — mis. Brevo: smtp-relay.brevo.com:465
+:: kanal SMTP generik (tanpa domain) — mis. Brevo: smtp-relay.brevo.com
 npx.cmd wrangler secret put SMTP_HOST       :: smtp-relay.brevo.com
-npx.cmd wrangler secret put SMTP_PORT       :: 465
+npx.cmd wrangler secret put SMTP_PORT       :: 465 (TLS langsung) atau 587 (STARTTLS)
 npx.cmd wrangler secret put SMTP_USER       :: Login Brevo (halaman SMTP & API)
 npx.cmd wrangler secret put SMTP_PASSWORD   :: SMTP Key Brevo
 npx.cmd wrangler secret put SMTP_FROM       :: alamat sender terverifikasi Brevo
