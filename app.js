@@ -227,6 +227,16 @@ function ledger(){
   }).join(''):'<tr><td colspan="3" class="empty-state">Belum ada jurnal — transaksi pertama akan tercatat otomatis di sini.</td></tr>';
   return `<div class="panel"><div class="panel-head"><div><div class="panel-title">Jurnal terbaru</div><div class="panel-caption">Pencatatan otomatis · Double-entry dari data pesanan</div></div><button class="link-btn" data-page="finance">Buku besar →</button></div><table class="ledger"><thead><tr><th>Transaksi</th><th>Akun</th><th style="text-align:right">Debit / Kredit</th></tr></thead><tbody>${body}</tbody></table>${rows.length?'<div class="ledger-foot"><span>Saldo debit & kredit seimbang</span><b>✓ Balanced</b></div>':''}</div>`;
 }
+/* Tombol LogOut di Dashboard (Ringkasan) — memakai aksi "logout" yang sudah
+   ada: modal konfirmasi → RasaAuth.logout() → gerbang masuk terbuka, jadi
+   pengguna bebas keluar, masuk lagi, atau mengganti email/Gmail.
+   Bila belum ada sesi akun (mode lokal / tamu), tombol berubah menjadi
+   pintu masuk supaya pengguna langsung bisa memilih email lain. */
+function dashboardLogoutBtn(){
+  return (window.RasaSession&&window.RasaSession.token)
+    ? '<button class="btn btn-danger" data-action="logout" title="Keluar dari akun ini"><span class="btn-icon">⏻</span> LogOut</button>'
+    : '<button class="btn" data-action="account-login" title="Masuk dengan email lain"><span class="btn-icon">⇥</span> Masuk akun</button>';
+}
 function dashboard(){
   const sales=salesTotal();      /* termasuk arsip — tidak hilang saat workspace dikosongkan */
   const live=liveOrders();
@@ -234,7 +244,7 @@ function dashboard(){
   const resCount=(store.reservations||[]).length;   /* ikut tersinkron penuh; wewenang dicabut = akses ditutup, data tidak dihapus */
   const used=usedTables();
   const pct=Math.round(used/TABLE_COUNT*100);
-  return `${heading(greeting(),'Berikut ringkasan operasional restoran Anda hari ini — ikut berubah mengikuti data pesanan, menu, dan reservasi. Semua perubahan tersimpan otomatis.','<button class="btn" data-action="refresh-dash"><span class="btn-icon">↻</span> Segarkan</button>'+(window.canPerm('settings','delete')?'<button class="btn btn-danger" data-action="reset-data"><span class="btn-icon">↺</span> Reset Data</button>':''))}
+  return `${heading(greeting(),'Berikut ringkasan operasional restoran Anda hari ini — ikut berubah mengikuti data pesanan, menu, dan reservasi. Semua perubahan tersimpan otomatis.','<button class="btn" data-action="refresh-dash"><span class="btn-icon">↻</span> Segarkan</button>'+(window.canPerm('settings','delete')?'<button class="btn btn-danger" data-action="reset-data"><span class="btn-icon">↺</span> Reset Data</button>':'')+dashboardLogoutBtn())}
   <div class="stats-grid">
     ${stat('Penjualan hari ini',money(sales),'dari '+live.length+' pesanan tercatat','↗',live.length?'↗ '+live.length+' transaksi':'—')}
     ${stat('Pesanan masuk',String(orders.length),g[0].count+' QR · '+g[1].count+' POS · '+resCount+' reservasi','▤',orders.filter(o=>o.cls==='preparing').length+' perlu diproses')}
@@ -2937,12 +2947,17 @@ document.addEventListener('click',e=>{
   if(action.startsWith('disconnect:')){askDisconnect(arg);return}
   if(action.startsWith('confirm-disconnect:')){disconnect(arg);return}
   if(action==='logout'){
-    openModal('<div class="modal-head"><span class="provider-mark" style="--pm:#a97c2c">⇥</span><div><b>Keluar dari sesi?</b><small>Rasa · '+(store.restaurantName||'Restoran')+'</small></div><button class="modal-close" data-action="close-modal" aria-label="Tutup">×</button></div><p class="modal-text">'+((window.RasaSession&&window.RasaSession.token)?'Sesi akun Anda berakhir di perangkat ini. Data restoran tetap tersimpan di server dan di perangkat.':'Foto profil, nama restoran, dan tautan akun tetap tersimpan di perangkat ini. Anda hanya keluar dari sesi demo ini.')+'</p><div class="modal-actions"><button class="btn" data-action="close-modal">Batal</button><button class="btn btn-danger" data-action="confirm-logout">Keluar</button></div>');
+    openModal('<div class="modal-head"><span class="provider-mark" style="--pm:#a97c2c">⇥</span><div><b>Keluar dari sesi?</b><small>Rasa · '+(store.restaurantName||'Restoran')+'</small></div><button class="modal-close" data-action="close-modal" aria-label="Tutup">×</button></div><p class="modal-text">'+((window.RasaSession&&window.RasaSession.token)?'Sesi akun Anda berakhir di perangkat ini. Data restoran tetap tersimpan di server — masuk lagi dengan email yang sama untuk melanjutkan, atau gunakan email lain untuk mengganti akun.':'Foto profil, nama restoran, dan tautan akun tetap tersimpan di perangkat ini. Anda hanya keluar dari sesi demo ini.')+'</p><div class="modal-actions"><button class="btn" data-action="close-modal">Batal</button><button class="btn btn-danger" data-action="confirm-logout">Keluar</button></div>');
     return}
   if(action==='confirm-logout'){
     closeModal();
-    if(window.RasaSession&&window.RasaSession.token){window.RasaAuth.logout()}
-    else{toast('Anda telah keluar dari sesi demo.')}
+    if(window.RasaSession&&window.RasaSession.token){
+      const p=window.RasaAuth.logout();
+      /* gambar ulang halaman aktif begitu sesi ditutup, agar tombol di
+         Dashboard langsung berubah menjadi "Masuk akun" */
+      if(p&&p.then)p.then(()=>{try{render(currentPage,true)}catch(e){}}).catch(()=>{});
+    }
+    else{if(window.RasaAuth){window.RasaAuth.showGate()}else{toast('Anda telah keluar dari sesi demo.')}}
     return}
   if(action==='account-login'){window.RasaAuth.showGate();return}
   if(action==='inv-add'){openInvForm('new');return}
