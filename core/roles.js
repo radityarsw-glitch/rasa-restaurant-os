@@ -445,6 +445,23 @@ window.RasaRoles = (function () {
   };
 
   /* ---------- 6. Hook render & sesi ---------- */
+  /* Tombol LogOut / Masuk akun wajib ada di SETIAP varian halaman Ringkasan.
+     Dashboard per role (manager, kasir, kitchen, waiter) tidak dibuat lewat
+     dashboard() milik owner — masing-masing punya heading sendiri lewat
+     roleHeading()/kitchenPage(), jadi tombolnya dipasang di sini begitu
+     halaman Ringkasan selesai digambar. Dashboard owner sudah memuat tombol
+     ini, karena itu dicek dulu agar tidak dobel. */
+  function ensureLogoutButton() {
+    const pc = $('pageContent');
+    if (!pc) return;
+    const actions = pc.querySelector('.heading-actions');
+    if (!actions) return;
+    if (actions.querySelector('[data-action="logout"],[data-action="account-login"]')) return;
+    const fn = typeof dashboardLogoutBtn === 'function' ? dashboardLogoutBtn : null;
+    if (!fn) return;
+    actions.insertAdjacentHTML('beforeend', fn());
+  }
+
   function postRender(page) {
     const R = window.RASA;
     if (page === 'overview' && !state.deniedFor) {
@@ -459,6 +476,7 @@ window.RasaRoles = (function () {
           animateChart();
         }
       }
+      ensureLogoutButton();
     }
     if (page === 'settings') injectSettings();
     applyNav();
