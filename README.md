@@ -31,6 +31,7 @@ Setiap data yang Anda isi **tersimpan otomatis** — dulu hanya di `localStorage
 - **Tombol LogOut** (Ringkasan): di bilah judul halaman **Ringkasan**, di samping *Segarkan* dan *Reset Data*, tersedia tombol **⏻ LogOut** agar setiap pengguna bebas keluar, masuk lagi, atau **mengganti email/Gmail** mereka. Tekan tombolnya → modal konfirmasi **“Keluar dari sesi?”** → `RasaAuth.logout()` menutup sesi di server lalu **gerbang masuk terbuka kembali**, sehingga email berbeda bisa langsung dipakai (atau email yang sama untuk melanjutkan). Bila pengguna belum masuk akun (mode lokal/tamu), tombol yang sama otomatis tampil sebagai **Masuk akun** yang membuka gerbang login. Setelah sesi ditutup, tombol di Dashboard langsung berubah menjadi *Masuk akun* dan halaman digambar ulang.
 
   **Tombol ini ada di SEMUA varian Ringkasan** — owner (dashboard umum), **Manager, Kasir, Kitchen, dan Waiter**. Dashboard per role dibuat terpisah di `core/roles.js` (`roleHeading()` / `kitchenPage()`) sehingga tidak ikut `dashboard()` milik owner; karena itu `postRender()` memasangnya kembali (dengan pemeriksaan agar tidak dobel) begitu halaman Ringkasan selesai digambar. Tanpa langkah ini, akun staf/undangan Gmail tidak melihat tombol LogOut sama sekali.
+- **Tombol “Hari ini” dihapus:** bilah judul setiap halaman tidak lagi memuat tombol `▦ Hari ini⌄`. Tombol itu hanya menampilkan tanggal yang sudah tertera pada *eyebrow* judul dan tidak punya aksi apa pun (kliknya hanya memunculkan toast). Yang tersisa di `.heading-actions` hanya tombol aksi halaman: Segarkan, Reset Data, LogOut, dsb.
 - **Notifikasi:** kartu notifikasi melayang di **pojok kanan atas** (maksimal 4, hilang otomatis ~8 detik) dan daftarnya bisa dibuka lewat tombol **🔔 lonceng** di bilah atas — **klik notifikasi untuk langsung menuju halaman tujuannya** (misal reservasi yang mendekat, stok menipis, pesanan baru).
 - **Menu produk:** foto produk atau **inisial nama** agar daftar menu lebih rapi dan konsisten.
 - **Reservasi v2:** form reservasi kini memuat **pilihan nomor meja** (kartu hijau = tersedia, merah = sudah dipesan/kapasitas kurang, non-klik), **pilihan menu** (kartu foto + stepper [+]/[−]), **rincian biaya** (subtotal, service charge, uang muka/DP, total estimasi), lalu **modal konfirmasi** sebelum tersimpan. Setiap jadwal menampilkan **hitung mundur live** “Dimulai dalam 02 Jam 15 Menit 30 Detik” yang berdetak tiap detik tanpa refresh — bila jadwal sudah lewat, tulisan berubah menjadi **merah** “Telah melewati tenggat waktu”.
@@ -148,7 +149,7 @@ Struk pembayaran untuk pelanggan, dibuka lewat modul `core/receipt.js` — **sat
 
 **Kontak di struk** diisi lewat **Pengaturan → Kontak & media sosial restoran** (`restoAddress`, `restoPhone`, `restoEmail`, `restoWebsite`, `restoSocial`) — otomatis tersimpan saat diketik dan menjadi satu-satunya sumber identitas kontak pada struk.
 
-**Data transaksi baru** (checkout POS) kini ikut menyimpan `cashier`, `orderType`, `table`, `discount`, `paid`, `change`, `ref`, `payStatus`, serta `variant` pada tiap item — jadi struk, POS, dan laporan memakai angka yang sama. Diskon dan uang diterima diisi di modal pembayaran; bila uang diterima kurang dari total, pembayaran ditolak (tidak pernah membuat catatan pembayaran yang salah).
+**Data transaksi baru** (checkout POS) kini ikut menyimpan `cashier`, `orderType`, `table`, `discount`, `paid`, `change`, `ref`, `payStatus`, serta `variant` pada tiap item — jadi struk, POS, dan laporan memakai angka yang sama. Kolom diskon & uang diterima sudah dihapus dari modal pembayaran, sehingga pesanan baru selalu tersimpan `discount: 0`, `paid = total`, dan `change: 0`; transaksi lama yang memiliki nilai diskon/uang diterima tetap utuh dan tetap ditampilkan di struk.
 
 ## Modul yang tersedia
 
@@ -160,6 +161,12 @@ Struk pembayaran untuk pelanggan, dibuka lewat modul `core/receipt.js` — **sat
 - Persediaan dan pengadaan bahan baku
 - Keuangan, Chart of Accounts, jurnal double-entry, audit trail, dan laporan
 - **Struk pelanggan**: pratinjau, cetak thermal 58/80 mm, unduh PDF, bagikan WhatsApp/email, QR verifikasi, dan buka lagi dari riwayat pesanan
+
+## Pesanan di Menu: pilih varian & pembayaran
+
+- **Pilihan “Normal” selalu tersedia di modal *Pilih varian*.** Bila menu hanya menawarkan varian opsional — mis. `Nasi Goreng` yang varianya cuma `Spicy` — pengguna tetap bisa memesan **versi normal**: tombol **Normal** (harga dasar produk, tanpa varian) otomatis ditambahkan sebagai pilihan pertama sekaligus pilihan bawaan, jadi “Spicy” bisa dimatikan kembali. Penambahan ini tidak pernah mengganti atau menggandakan opsi yang sudah ada: nama varian dasar (`Normal`, `Biasa`, `Regular`, `Original`, `Standar`, `Standard`, `Polos`, `Basic`) dianggap sudah mewakili pilihan normal — mis. daftar `Regular, Large` tetap persis `Regular, Large`, dan `Biasa` pada menu lain tidak berubah. Memilih **Normal** menyimpan pesanan **tanpa varian** (`variant: ''`) dengan harga dasar, sehingga keranjang, struk, POS, dan laporan tetap memakai angka yang sama.
+
+- **Kolom “Diskon (Rp)” & “Uang diterima (Rp)” dihapus dari modal *Keranjang & pembayaran*.** Total yang dibayar selalu total keranjang; pesanan baru selalu tersimpan dengan `discount: 0`, `paid = total`, dan `change: 0`. Struk dan laporan tetap menampilkan diskon/uang dibayarkan untuk transaksi lama yang memang memiliki nilai tersebut.
 
 ## Deploy ke Cloudflare
 
@@ -245,7 +252,7 @@ Enam skrip pengujian dijalankan terhadap `wrangler dev --port 8790 --local` (D1 
 
 Folder aset yang disajikan `wrangler dev` bisa dioverride lewat variabel lingkungan `RASA_ASSETS` (default: `%TEMP%\rasa-assets`).
 
-Selain enam skrip di atas, struk pelanggan juga diuji otomatis terhadap frontend statis: matriks QR dibandingkan byte-per-byte dengan pustaka `qrcode` (Python) untuk versi 3/5/7/10, PDF struk divalidasi dengan `pypdf` (halaman 80 mm, isi & margin), serta uji headless Chrome 55 pemeriksaan (buka struk dari riwayat, isi struk = data transaksi, cetak 58/80 mm, `@media print`, PDF, kontak Pengaturan, alur bayar dengan diskon + uang diterima, tampilan 390 px, nol exception JavaScript).
+Selain enam skrip di atas, struk pelanggan juga diuji otomatis terhadap frontend statis: matriks QR dibandingkan byte-per-byte dengan pustaka `qrcode` (Python) untuk versi 3/5/7/10, PDF struk divalidasi dengan `pypdf` (halaman 80 mm, isi & margin), serta uji headless Chrome 55 pemeriksaan (buka struk dari riwayat, isi struk = data transaksi, cetak 58/80 mm, `@media print`, PDF, kontak Pengaturan, alur bayar tanpa kolom diskon & uang diterima — keduanya dihapus dari modal pembayaran, tampilan 390 px, nol exception JavaScript).
 
 ## Batasan
 

@@ -114,7 +114,7 @@ function onboardPanel(){
   if(hasOperations())return '';
   return `<div class="panel onboard-panel"><div class="panel-head"><div><div class="panel-title">Restoran Anda masih baru</div><div class="panel-caption">Semua data masih kosong — mulai dari langkah pertama. Data yang Anda isi tersimpan otomatis dan tersinkron dengan akun email Anda — bisa dibuka lagi dari perangkat lain yang login dengan email sama.</div></div></div><div class="onboard-steps"><button class="onboard-step" data-page="settings"><b>1</b> Atur nama &amp; lokasi</button><button class="onboard-step" data-page="menu"><b>2</b> Tambah menu pertama</button>${window.canPerm('reservations','create')?'<button class="onboard-step" data-action="booking"><b>3</b> Buat reservasi</button>':''}<button class="onboard-step" data-action="toggle-open"><b>4</b> Status buka / tutup</button></div></div>`;
 }
-function heading(title,subtitle,action='') {return `<div class="page-heading"><div><div class="eyebrow">${(store.restaurantName||'Restoran').toUpperCase()} · ${DATE_LABEL}</div><h1>${title}</h1><div class="subtitle">${subtitle}</div></div><div class="heading-actions"><button class="btn date-btn" data-action="date"><span class="btn-icon">▦</span> Hari ini⌄</button>${action}</div></div>`}
+function heading(title,subtitle,action='') {return `<div class="page-heading"><div><div class="eyebrow">${(store.restaurantName||'Restoran').toUpperCase()} · ${DATE_LABEL}</div><h1>${title}</h1><div class="subtitle">${subtitle}</div></div><div class="heading-actions">${action}</div></div>`}
 function stat(label,value,foot,icon,trend='') {return `<div class="stat-card"><div class="stat-top">${label}<span class="stat-icon">${icon}</span></div><div class="stat-value">${value}</div><div class="stat-foot"><span class="trend ${trend.includes('−')?'warn':''}">${trend}</span>${foot}</div></div>`}
 /* Struk pelanggan — tombol baca-only di tabel riwayat (modal ditangani
    modul core/receipt.js lewat window.RASA.actions.receipt). */
@@ -594,32 +594,50 @@ function subFromCart(key){
   render('menu',true);
 }
 let pickingProduct='';
+/* Opsi yang ditawarkan modal "Pilih varian".
+   Selalu memuat pilihan dasar (harga normal, tanpa varian) bila menu belum
+   menawarkannya — pengguna harus tetap bisa memesan versi normal, mis.
+   Nasi Goreng tanpa "Spicy". Nama varian dasar (Normal/Biasa/Regular/…)
+   dianggap sudah mewakili pilihan normal, jadi tidak ditambahkan dua kali. */
+const BASE_VARIANT_NAMES=['normal','biasa','regular','original','standar','standard','polos','basic'];
+function variantOptions(p){
+  const list=(p&&p.variants||[]).map(v=>{
+    const nm=String(variantName(v));
+    return {name:nm,label:nm,price:variantPrice(p,v),delta:variantDelta(p,v)};
+  });
+  const hasBase=list.some(o=>o.name===''||BASE_VARIANT_NAMES.indexOf(o.name.trim().toLowerCase())>=0);
+  if(hasBase)return list;
+  return [{name:'',label:'Normal',price:Number(p&&p.price)||0,delta:0}].concat(list);
+}
 function openVariantPicker(id){
   const p=productById(id);if(!p)return;
   if(isSoldOut(p)){toast(p.name+' sedang habis.');return}
   if(!(p.variants||[]).length){addToCart(id,'',1);return}
   pickingProduct=id;
-  const first=p.variants[0];
-  const rows=p.variants.map((v,i)=>{
-    const nm=variantName(v),pr=variantPrice(p,v),d=variantDelta(p,v);
-    return '<label class="pv-row'+(i===0?' on':'')+'"><input type="radio" name="pvV" value="'+esc(nm)+'"'+(i===0?' checked':'')+'>'+
-      '<span class="pv-name">'+esc(nm)+'</span>'+
-      '<span class="pv-price">'+money(pr)+(d?'<i class="'+(d>0?'up':'down')+'">'+(d>0?'+':'−')+money(Math.abs(d))+'</i>':'')+'</span></label>';
+  const opts=variantOptions(p);
+  const first=opts[0];
+  const rows=opts.map((o,i)=>{
+    return '<label class="pv-row'+(i===0?' on':'')+'"><input type="radio" name="pvV" value="'+esc(o.name)+'"'+(i===0?' checked':'')+'>'+
+      '<span class="pv-name">'+esc(o.label)+'</span>'+
+      '<span class="pv-price">'+money(o.price)+(o.delta?'<i class="'+(o.delta>0?'up':'down')+'">'+(o.delta>0?'+':'−')+money(Math.abs(o.delta))+'</i>':'')+'</span></label>';
   }).join('');
   openModal('<div class="modal-head"><span class="provider-mark" style="--pm:#a97c2c">'+esc(productInitials(p))+'</span><div><b>'+esc(p.name)+'</b><small>'+esc(productNote(p))+'</small></div><button class="modal-close" data-action="close-modal" aria-label="Tutup">×</button></div>'+
     (p.image?'<div class="modal-img"><img src="'+p.image+'" alt=""></div>':'')+
     '<span class="field-label">Pilih varian &amp; harga</span><div class="pv-list">'+rows+'</div>'+
-    '<input type="hidden" id="pvVariant" value="'+esc(variantName(first))+'">'+
+    '<input type="hidden" id="pvVariant" value="'+esc(first.name)+'">'+
     '<div class="field-row"><label class="field"><span>Jumlah</span><input class="input" type="number" id="pvQty" min="1" max="'+(p.stock||1)+'" value="1"></label><label class="field"><span>Sisa stok</span><input class="input" value="'+(p.stock||0)+'" disabled></label></div>'+
-    '<div class="pv-total">Total sementara <b id="pvTotal">'+money(variantPrice(p,first))+'</b></div>'+
+    '<div class="pv-total">Total sementara <b id="pvTotal">'+money(first.price)+'</b></div>'+
     '<div class="modal-actions"><button class="btn" data-action="close-modal">Batal</button><button class="btn btn-primary" data-action="add-variant:'+p.id+'">Tambah ke keranjang</button></div>');
 }
 function updatePvTotal(){
   const p=productById(pickingProduct);if(!p)return;
-  const v=fieldVal('pvVariant')||variantName(p.variants[0]);
+  /* varian kosong = pilihan normal (harga dasar produk), bukan varian pertama */
+  const hid=document.getElementById('pvVariant');
+  const sel=hid?String(hid.value||''):'';
   const q=parseInt(fieldVal('pvQty'),10)||1;
+  const price=sel?variantPrice(p,sel):(Number(p.price)||0);
   const el=document.getElementById('pvTotal');
-  if(el)el.textContent=money(variantPrice(p,v)*q);
+  if(el)el.textContent=money(price*q);
 }
 function pvPickChanged(target){
   if(!target)return;
@@ -879,24 +897,13 @@ function openCheckout(){
       '<label class="field"><span>Nomor meja</span><input class="input" id="coTable" maxlength="12" placeholder="Opsional — mis. 7" autocomplete="off"></label>'+
     '</div>'+
     '<label class="field"><span>Metode pembayaran</span><select class="input" id="coMethod"><option>QRIS</option><option>Tunai di kasir</option><option>Kartu debit / kredit</option><option>E-wallet (GoPay / OVO)</option></select></label>'+
-    '<div class="field-row">'+
-      '<label class="field"><span>Diskon (Rp)</span><input class="input" id="coDiscount" inputmode="numeric" placeholder="0" autocomplete="off"></label>'+
-      '<label class="field"><span>Uang diterima (Rp)</span><input class="input" id="coPaid" inputmode="numeric" placeholder="Otomatis = total" autocomplete="off"></label>'+
-    '</div>'+
     '<div class="modal-actions"><button class="btn" data-action="close-modal">Batal</button><button class="btn btn-primary" data-action="pay-now" id="coPayBtn">Bayar '+money(cartTotal())+'</button></div>'+
     '<small class="modal-note">Pembayaran pada prototipe ini disimulasikan — tidak ada uang yang benar-benar dipotong. Struk pelanggan terbit otomatis setelah pembayaran berhasil.</small>');
   const n=document.getElementById('coName');if(n)n.focus();
 }
-/* Total yang benar-benar dibayar = total keranjang − diskon.
-   Dipakai bersama oleh label tombol bayar dan payNow() supaya
-   nilai struk, POS, dan laporan selalu memakai angka yang sama. */
-function checkoutDiscount(){return Math.max(0,parseRp(fieldVal('coDiscount')))}
-function checkoutPayable(){return Math.max(0,cartTotal()-checkoutDiscount())}
-function checkoutTotalsRefresh(){
-  const total=checkoutPayable();
-  const box=document.getElementById('coTotal');if(box)box.textContent=money(total);
-  const btn=document.getElementById('coPayBtn');if(btn)btn.textContent='Bayar '+money(total);
-}
+/* Kolom "Diskon (Rp)" & "Uang diterima (Rp)" dihapus dari modal
+   Keranjang & pembayaran: total yang dibayar selalu total keranjang,
+   tanpa potongan manual dan tanpa input uang diterima. */
 function payNow(){
   const lines=cartLines();
   if(!lines.length){closeModal();toast('Keranjang kosong.');return}
@@ -905,11 +912,9 @@ function payNow(){
   const method=fieldVal('coMethod')||'QRIS';
   const orderType=fieldVal('coType')||'Makan di Tempat';
   const table=fieldVal('coTable');
-  const discount=checkoutDiscount();
-  const total=checkoutPayable();
-  const paidInput=parseRp(fieldVal('coPaid'));
-  const paid=paidInput>0?paidInput:total;
-  if(paid<total){toast('Uang diterima '+money(paid)+' kurang dari total '+money(total)+'.');return}
+  const discount=0;
+  const total=cartTotal();
+  const paid=total;
   const count=cartCount();
   modalEl.querySelector('.modal').innerHTML='<div class="center-text"><div class="spinner"></div><b>Memproses pembayaran…</b><small>'+esc(method)+' · '+money(total)+'</small></div>';
   setTimeout(()=>{
@@ -2995,7 +3000,6 @@ document.addEventListener('input',e=>{
   else if(id==='ownerInput'){store.ownerName=e.target.value}
   else if(id==='roleInput'){store.ownerRole=e.target.value}
   else if(id==='restoAddress'||id==='restoPhone'||id==='restoEmail'||id==='restoWebsite'||id==='restoSocial'){store[id]=e.target.value}
-  else if(id==='coDiscount'||id==='coPaid'){checkoutTotalsRefresh();return}
   else if(id==='latInput'||id==='lngInput'){
     store[id==='latInput'?'lat':'lng']=e.target.value.trim();
     saveStore();
