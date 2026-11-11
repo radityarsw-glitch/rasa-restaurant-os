@@ -439,9 +439,12 @@ button{font:inherit;color:inherit;cursor:pointer}
 .page-content{max-width:1320px;padding:31px 38px 48px;margin:auto}
 .page-heading{
   display:flex;
+  flex-wrap:wrap;                 /* baris teks & baris tombol tidak pernah terpecah 2+1 */
   justify-content:space-between;
   align-items:flex-start;
+  gap:12px 22px;                  /* jarak lega antara judul dan tombol aksi */
   margin-bottom:23px}
+.page-heading>div:first-child{flex:1 1 320px;min-width:0}  /* blok teks boleh menyusut & wrap */
 .eyebrow{
   font-size:10px;
   color:var(--gold-deep);
@@ -465,7 +468,7 @@ h1{
   margin:0 0 6px;
   color:var(--ink)}
 .subtitle{font-size:11px;color:var(--muted)}
-.heading-actions{display:flex;gap:8px}
+.heading-actions{display:flex;gap:8px;flex:none;flex-wrap:nowrap;align-items:center;margin-left:auto}
 
 /* ---------------- Buttons ---------------- */
 .btn{
@@ -3013,7 +3016,9 @@ img{height:auto}
 .panel{min-width:0}
 .panel-head>div{min-width:0}
 .panel-head .link-btn{flex:none;white-space:nowrap}
-.heading-actions{flex-wrap:wrap}
+/* Kartu jadwal: blok konten boleh menyusut sehingga kolom aksi (.booking-side)
+   tidak pernah terdorong keluar dari batas kartu */
+.booking-card>div:first-child{min-width:0;flex:1 1 auto}
 .profile-editor,.profile-actions,.provider-card,.provider-info,
 .field-row>.field,.quick-row>*,.status-banner>*{min-width:0}
 
@@ -3039,6 +3044,11 @@ img{height:auto}
   .open-status{min-height:34px}   /* pil status buka/tutup: target sentuh lebih lega */
   .heading-actions{flex-wrap:wrap;flex:none;gap:6px;margin-left:auto;justify-content:flex-end;max-width:100%}
   .page-heading{flex-wrap:wrap}
+  /* Kartu jadwal reservasi: teks & pil hitung mundur tetap di dalam kartu,
+     kolom aksi turun ke baris sendiri selebar kartu */
+  .booking-card{flex-wrap:wrap}
+  .booking-card>div:first-child{flex:1 1 100%}
+  .booking-side{flex:1 1 100%;width:100%;justify-content:flex-end}
   .table-wrap{margin-inline:0}
 }
 
