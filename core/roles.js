@@ -473,6 +473,7 @@ window.RasaRoles = (function () {
           pc.innerHTML = builder();
           const banner = statusBanner();
           if (banner) pc.insertAdjacentHTML('afterbegin', banner);
+          if (typeof window.RASA_wrapTables === 'function') window.RASA_wrapTables(pc);
           animateChart();
         }
       }

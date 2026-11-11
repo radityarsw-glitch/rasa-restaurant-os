@@ -2546,6 +2546,7 @@ function openModal(html,opts){
   modalEl.className='modal-overlay';
   modalEl.innerHTML='<div class="modal'+(opts&&opts.wide?' modal-wide':'')+(opts&&opts.className?' '+opts.className:'')+'">'+html+'</div>';
   document.body.appendChild(modalEl);
+  wrapTables(modalEl);
   modalEl.addEventListener('click',ev=>{if(ev.target===modalEl)closeModal()});
   if(opts&&opts.wide){startLiveCountdown();tickLiveCountdown()}
 }
@@ -2761,6 +2762,37 @@ function syncHash(page){
 }
 
 const renderers={overview:dashboard,orders:ordersPage,kitchen:kitchenPage,pelayan:pelayanPage,'pelayan-meja':pelayanMejaPage,reservations:reservationsPage,menu:menuPage,inventory:inventoryPage,recipes:recipesPage,procurement:procurementPage,finance:financePage,reports:reportsPage,settings:settingsPage};
+/* Responsive: setiap tabel SELALU dibungkus .table-wrap agar lebarnya
+   tidak pernah memaksa halaman melebar (zoom out manual di HP).
+   Bergulir hanya di area tabel, teks & ukuran huruf tetap terbaca. */
+function wrapTables(root){
+  const scope=root&&root.querySelectorAll?root:document;
+  scope.querySelectorAll('table').forEach(t=>{
+    if(!t.closest('.table-wrap')){
+      const w=document.createElement('div');
+      w.className='table-wrap';
+      t.parentNode.insertBefore(w,t);
+      w.appendChild(t);
+    }
+    /* Tabel tanpa baris data (hanya pesan empty-state) dibuat selebar
+       layar + header boleh wrap, agar pesannya terbaca penuh tanpa
+       harus bergulir horizontal. */
+    const dataRows=Array.from(t.querySelectorAll('tbody tr'))
+      .filter(r=>!r.querySelector('td.empty-state'));
+    t.classList.toggle('is-empty',dataRows.length===0);
+  });
+  /* Pesan empty-state dibungkus span sticky agar tetap terlihat saat
+     tabel digulir horizontal (lebar tabel mengikuti judul kolom). */
+  scope.querySelectorAll('td.empty-state').forEach(td=>{
+    if(td.querySelector(':scope > .es-pin'))return;
+    const s=document.createElement('span');
+    s.className='es-pin';
+    while(td.firstChild)s.appendChild(td.firstChild);
+    td.appendChild(s);
+  });
+}
+window.RASA_wrapTables=wrapTables;
+
 function render(page='overview',keepScroll){
   const y=(typeof window!=='undefined'&&window.scrollY)||0;
   currentPage=page;
@@ -2769,6 +2801,7 @@ function render(page='overview',keepScroll){
   pc.innerHTML=(renderers[page]||dashboard)();
   const banner=statusBanner();
   if(banner)pc.insertAdjacentHTML('afterbegin',banner);
+  wrapTables(pc);
   document.getElementById('crumb').textContent=pageNames[page]||'Ringkasan';
   document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.page===page));
   closeSidebar();
