@@ -40,7 +40,11 @@ window.RasaRoles = (function () {
     userPerms: null,          /* { userId: { modul: [aksi] } } wewenang khusus staf */
     deniedFor: '',            /* halaman terakhir yang ditolak (bukan halaman biasa) */
     requested: 'overview',    /* halaman terakhir yang diminta pengguna */
-    ready: false              /* sesi sudah dipulihkan (izin final diketahui) */
+    ready: false,             /* sesi sudah dipulihkan (izin final diketahui) */
+    staffTab: 'active',       /* tab Staf & Role: 'active' | 'inactive' */
+    staffQuery: '',           /* pencarian nama / email */
+    staffRoleFilter: '',      /* filter role ('' = semua) */
+    staffCounts: null         /* jumlah dari server: { active, inactive, total } */
   };
 
   const moduleOf = page => PAGE_MODULE[page] || page;
@@ -72,6 +76,7 @@ window.RasaRoles = (function () {
     accounting: ['accounting', 'journal', 'ledger'], reports: ['reports'], analytics: ['analytics'],
     alerts: ['alerts'], audit: ['audit'], settings: ['restaurantName', 'restaurantLocation', 'brandName',
       'ownerName', 'ownerRole', 'avatar', 'logo', 'accounts', 'lat', 'lng', 'profile', 'identity', 'outlet', 'outlets',
+      'restoAddress', 'restoPhone', 'restoEmail', 'restoWebsite', 'restoSocial',
       'theme', 'isOpen'],
     permissions: ['permissions']
   };
@@ -80,6 +85,14 @@ window.RasaRoles = (function () {
   const KEY_MODULE = {};
   Object.keys(MODULE_KEYS).forEach(m => MODULE_KEYS[m].forEach(k => { KEY_MODULE[k] = m }));
   window.RasaKeyModule = k => KEY_MODULE[k] || 'misc';
+  /* Key identitas restoran (logo, nama pemilik & restoran, kontak, tampilan,
+     lokasi) — HANYA Owner yang boleh menulis. Dipakai sync.js untuk tidak
+     mendorong key ini dari sesi non-owner; server tetap memeriksa ulang. */
+  const IDENTITY_KEYS = ['restaurantName', 'restaurantLocation', 'brandName',
+    'ownerName', 'ownerRole', 'avatar', 'logo', 'lat', 'lng', 'theme',
+    'restaurantId', 'identity', 'profile',
+    'restoAddress', 'restoPhone', 'restoEmail', 'restoWebsite', 'restoSocial'];
+  window.RasaIdentityKeys = IDENTITY_KEYS;
   const readableModulesOf = perms => Object.keys(perms || {}).filter(m => Array.isArray(perms[m]) && perms[m].indexOf('read') >= 0);
 
   /* ---------- 1. Saring navigasi ---------- */
@@ -246,16 +259,38 @@ window.RasaRoles = (function () {
      Panel ini hanya menampilkan daftar staf beserta aksi Nonaktifkan,
      Wewenang, dan Hapus. */
   function staffPanelHtml() {
+    const canCreate = window.canPerm('staff', 'create');
     return `
     <div class="panel span-2" id="staffPanel">
       <div class="panel-head"><div><div class="panel-title">Staf &amp; role</div>
-      <div class="panel-caption">Akun yang boleh masuk ke restoran ini · kelola lewat tombol <b>Nonaktifkan</b>, <b>Wewenang</b>, dan <b>Hapus</b> — setiap perubahan divalidasi server</div></div>
-      <button class="link-btn" data-action="staff-invite-jump">＋ Undang staf lewat email →</button></div>
-      <div class="table-wrap"><table class="staff-table"><thead><tr><th>Nama</th><th>Email</th><th>Role</th><th>Status</th><th>Login terakhir</th><th style="text-align:right">Aksi</th></tr></thead>
+      <div class="panel-caption">Kelola akun staf restoran ini · setiap perubahan divalidasi server dan tercatat di <b>audit log</b></div></div>
+      <div class="staff-head-actions">
+        <button class="btn btn-primary" data-action="staff-add"${canCreate ? '' : ' hidden'}><span class="btn-icon">＋</span> Tambah staf</button>
+        <button class="link-btn" data-action="staff-invite-jump">Undang staf lewat email →</button>
+      </div></div>
+      <div class="staff-tabs" role="tablist" aria-label="Kategori akun">
+        <button class="staff-tab is-active" data-staff-tab="active" role="tab" aria-selected="true">Akun Aktif <span class="staff-tab-count" id="staffCountActive">0</span></button>
+        <button class="staff-tab" data-staff-tab="inactive" role="tab" aria-selected="false">Akun Nonaktif <span class="staff-tab-count" id="staffCountInactive">0</span></button>
+      </div>
+      <div class="staff-toolbar">
+        <input class="input staff-search" id="staffSearch" type="search" placeholder="Cari nama atau email…" value="${esc(state.staffQuery)}" aria-label="Cari nama atau email staf">
+        <select class="input staff-filter" id="staffRoleFilter" aria-label="Filter berdasarkan role">
+          <option value="">Semua role</option>
+          ${Object.keys(ROLE_LABELS).map(r => `<option value="${r}"${state.staffRoleFilter === r ? ' selected' : ''}>${ROLE_LABELS[r]}</option>`).join('')}
+        </select>
+      </div>
+      <div class="table-wrap"><table class="staff-table">
+      <thead id="staffHead"></thead>
       <tbody id="staffBody"><tr><td colspan="6" class="empty-state">Memuat daftar staf…</td></tr></tbody></table></div>
-      <div class="hint">Staf baru <b>tidak ditambahkan manual</b> — gunakan panel <b>Undangan staf (Gmail)</b> di Pengaturan agar calon staf menerima undangan lewat email. Mencabut wewenang <b>tidak menghapus data</b> — restoran tetap tersinkron, staf hanya kehilangan akses ke modul tersebut. Setiap perubahan tercatat di <b>audit log</b> dan langsung berlaku tanpa staf perlu masuk ulang.</div>
+      <div class="hint">Staf baru dapat ditambahkan lewat tombol <b>Tambah staf</b> atau diundang lewat email (panel <b>Undangan staf</b>). Menonaktifkan akun <b>menarik seluruh sesi</b> staf tersebut dan memindahkannya ke tab <b>Akun Nonaktif</b> — data operasional tetap utuh. Menghapus permanen hanya tersedia bagi <b>Owner</b>. Setiap perubahan tercatat di <b>audit log</b> dan langsung berlaku.</div>
     </div>`;
   }
+
+  const fmtWhen = ts => (ts ? new Date(ts).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
+  const emptyRow = (cols, html) => '<tr><td colspan="' + cols + '" class="empty-state">' + html + '</td></tr>';
+  const staffHeadOf = tab => tab === 'inactive'
+    ? '<tr><th>Nama</th><th>Email</th><th>Role terakhir</th><th>Dinonaktifkan</th><th style="text-align:right">Aksi</th></tr>'
+    : '<tr><th>Nama</th><th>Email</th><th>Role</th><th>Status</th><th>Login terakhir</th><th style="text-align:right">Aksi</th></tr>';
 
   /* Ringkasan wewenang satu staf (override per staf vs matriks role) */
   function staffPermSummary(u) {
@@ -270,35 +305,103 @@ window.RasaRoles = (function () {
     return 'Sesuai role ' + (ROLE_LABELS[u.role] || u.role);
   }
 
+  const roleOptions = sel => Object.keys(ROLE_LABELS)
+    .map(r => '<option value="' + r + '"' + (sel === r ? ' selected' : '') + '>' + ROLE_LABELS[r] + '</option>').join('');
+
+  function staffMatches(u) {
+    const q = state.staffQuery.trim().toLowerCase();
+    if (q) {
+      const hay = String(u.name || '').toLowerCase() + ' ' + String(u.email || '').toLowerCase();
+      if (hay.indexOf(q) < 0) return false;
+    }
+    if (state.staffRoleFilter && u.role !== state.staffRoleFilter) return false;
+    return true;
+  }
+
   function renderStaff() {
     const body = $('staffBody');
     if (!body) return;
-    if (!state.staff) { body.innerHTML = '<tr><td colspan="6" class="empty-state">Daftar staf belum dimuat.</td></tr>'; return; }
+    const head = $('staffHead');
+    const tab = state.staffTab === 'inactive' ? 'inactive' : 'active';
     const me = currentUser();
     const canUpdate = window.canPerm('staff', 'update');
     const canDelete = window.canPerm('staff', 'delete');
     const canPermEdit = isOwner() && window.canPerm('permissions', 'update');
-    if (!state.staff.length) { body.innerHTML = '<tr><td colspan="6" class="empty-state">Belum ada staf — undang calon staf lewat email di panel <b>Undangan staf (Gmail)</b>.</td></tr>'; return; }
-    body.innerHTML = state.staff.map(u => {
-      const mine = me && u.id === me.id;
-      const last = u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : 'Belum pernah';
-      const roleCell = canUpdate && !mine
-        ? `<select class="input input-sm" data-staff-role="${u.id}">${Object.keys(ROLE_LABELS).map(r => '<option value="' + r + '"' + (u.role === r ? ' selected' : '') + '>' + ROLE_LABELS[r] + '</option>').join('')}</select><small class="subcell">${esc(staffPermSummary(u))}</small>`
-        : `<b>${ROLE_LABELS[u.role]}</b><small class="subcell">${esc(staffPermSummary(u))}</small>`;
-      const statusCell = u.status === 'active'
-        ? '<span class="status ready">Aktif</span>'
-        : '<span class="status pending">Dinonaktifkan</span>';
-      const actions = [];
-      if (canUpdate && !mine) actions.push(
-        `<button class="staff-act${u.status === 'active' ? ' is-off' : ' is-on'}" data-action="staff-toggle:${u.id}" title="${u.status === 'active' ? 'Nonaktifkan akun ini' : 'Aktifkan kembali akun ini'}"><i>⏻</i>${u.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'}</button>`);
-      if (canPermEdit && !mine && u.role !== 'owner') actions.push(
-        `<button class="staff-act is-perms" data-action="staff-perms:${u.id}" title="Cabut atau berikan wewenang staf ini"><i>⛨</i>Wewenang</button>`);
-      if (canDelete && !mine) actions.push(
-        `<button class="staff-act is-del" data-action="staff-del:${u.id}" title="Hapus staf ini selamanya"><i>✕</i>Hapus</button>`);
-      if (mine) actions.push('<span class="hint-inline">Anda</span>');
-      return `<tr${u.status !== 'active' ? ' class="row-dim"' : ''}><td><b>${esc(u.name || '—')}</b></td><td>${esc(u.email || '')}</td>
-        <td>${roleCell}</td><td>${statusCell}</td><td>${esc(last)}</td>
-        <td style="text-align:right"><div class="staff-actions">${actions.join('')}</div></td></tr>`;
+    const ownerActor = isOwner();   /* hapus permanen = kebijakan Owner */
+
+    /* jumlah tab selalu dari data server (dihitung di database) */
+    const counts = state.staffCounts ||
+      (state.staff ? { active: state.staff.filter(u => u.status === 'active').length, total: state.staff.length } : null);
+    const cA = $('staffCountActive'), cI = $('staffCountInactive');
+    if (cA) cA.textContent = String(counts ? counts.active : 0);
+    if (cI) cI.textContent = String(counts ? counts.inactive : (counts ? counts.total - counts.active : 0));
+    document.querySelectorAll('[data-staff-tab]').forEach(b => {
+      const on = b.getAttribute('data-staff-tab') === tab;
+      b.classList.toggle('is-active', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    const addBtn = document.querySelector('[data-action="staff-add"]');
+    if (addBtn) addBtn.hidden = !window.canPerm('staff', 'create');
+    if (head) head.innerHTML = staffHeadOf(tab);
+
+    if (!state.staff) { body.innerHTML = emptyRow(6, 'Daftar staf belum dimuat.'); return; }
+
+    const rows = state.staff
+      .filter(u => (tab === 'active' ? u.status === 'active' : u.status !== 'active'))
+      .filter(staffMatches);
+
+    if (!rows.length) {
+      let msg;
+      if (state.staffQuery || state.staffRoleFilter) msg = 'Tidak ada akun yang cocok dengan pencarian/filter Anda.';
+      else if (tab === 'inactive') msg = 'Belum ada akun nonaktif — akun yang dinonaktifkan akan muncul di sini beserta tanggal penonaktifannya.';
+      else msg = 'Belum ada staf — tambah lewat tombol <b>Tambah staf</b> atau undang calon staf lewat email di panel <b>Undangan staf (Gmail)</b>.';
+      body.innerHTML = emptyRow(6, msg);
+      return;
+    }
+
+    body.innerHTML = rows.map(u => {
+      const mine = me && String(u.id) === String(me.id);
+      const isOwnerRow = u.role === 'owner';
+
+      /* --- TAB AKTIF --- */
+      if (tab === 'active') {
+        const last = u.lastLoginAt ? fmtWhen(u.lastLoginAt) : 'Belum pernah';
+        const roleCell = (canUpdate && !mine && !isOwnerRow)
+          ? `<select class="input input-sm" data-staff-role="${u.id}">${roleOptions(u.role)}</select><small class="subcell">${esc(staffPermSummary(u))}</small>`
+          : `<b>${esc(ROLE_LABELS[u.role] || u.role)}</b><small class="subcell">${isOwnerRow ? 'Akun Owner dilindungi' : esc(staffPermSummary(u))}</small>`;
+        const actions = [];
+        /* baris Owner hanya bisa diedit oleh Owner sendiri */
+        if (canUpdate && !mine && (!isOwnerRow || ownerActor)) {
+          actions.push(`<button class="staff-act is-edit" data-action="staff-edit:${esc(String(u.id))}" title="Ubah informasi staf ini"><i>✎</i>Ubah</button>`);
+          /* perlindungan Owner: baris Owner tidak pernah jadi target penonaktifan */
+          if (!isOwnerRow) {
+            actions.push(`<button class="staff-act is-off" data-action="staff-toggle:${esc(String(u.id))}" title="Nonaktifkan akun ini"><i>⏻</i>Nonaktifkan</button>`);
+          }
+        }
+        if (canPermEdit && !mine && !isOwnerRow) {
+          actions.push(`<button class="staff-act is-perms" data-action="staff-perms:${esc(String(u.id))}" title="Cabut atau berikan wewenang staf ini"><i>⛨</i>Wewenang</button>`);
+        }
+        if (canDelete && ownerActor && !mine && !isOwnerRow) {
+          actions.push(`<button class="staff-act is-del" data-action="staff-del:${esc(String(u.id))}" title="Hapus staf ini selamanya"><i>✕</i>Hapus</button>`);
+        }
+        if (mine) actions.push('<span class="hint-inline">Anda</span>');
+        return `<tr><td><b>${esc(u.name || '—')}</b></td><td>${esc(u.email || '')}</td>
+          <td>${roleCell}</td><td><span class="status ready">Aktif</span></td><td>${esc(last)}</td>
+          <td style="text-align:right"><div class="staff-actions">${actions.join('')}</div></td></tr>`;
+      }
+
+      /* --- TAB NONAKTIF --- */
+      const acts = [];
+      if (canUpdate) {
+        acts.push(`<button class="staff-act is-on" data-action="staff-toggle:${esc(String(u.id))}" title="Aktifkan kembali akun ini"><i>⏻</i>Aktifkan</button>`);
+      }
+      if (canDelete && ownerActor && String(u.id) !== String(me && me.id)) {
+        acts.push(`<button class="staff-act is-del" data-action="staff-del:${esc(String(u.id))}" title="Hapus akun secara permanen"><i>✕</i>Hapus</button>`);
+      }
+      return `<tr class="row-dim"><td><b>${esc(u.name || '—')}</b></td><td>${esc(u.email || '')}</td>
+        <td><b>${esc(ROLE_LABELS[u.role] || u.role)}</b><small class="subcell">${esc(staffPermSummary(u))}</small></td>
+        <td>${esc(fmtWhen(u.deactivatedAt))}</td>
+        <td style="text-align:right"><div class="staff-actions">${acts.join('')}</div></td></tr>`;
     }).join('');
   }
 
@@ -307,13 +410,15 @@ window.RasaRoles = (function () {
     if (state.staff && !force) { renderStaff(); return; }
     if (state.staffLoading) return;
     state.staffLoading = true;
+    if (state.staff) renderStaff();   /* tampilkan daftar lama dulu, lalu segarkan dari server */
     try {
       const res = await window.RasaAPI.get('/api/staff');
       state.staff = res.items || [];
+      state.staffCounts = res.counts || null;
       renderStaff();
     } catch (e) {
       const body = $('staffBody');
-      if (body) body.innerHTML = '<tr><td colspan="6" class="empty-state">Gagal memuat staf: ' + esc(e.message) + '</td></tr>';
+      if (body) body.innerHTML = emptyRow(6, 'Gagal memuat staf: ' + esc(e.message));
     } finally { state.staffLoading = false; }
   }
 
@@ -356,6 +461,7 @@ window.RasaRoles = (function () {
     const u = (state.staff || []).find(x => String(x.id) === String(id));
     if (!u) { toast('Staf tidak ditemukan.'); return; }
     if (!isOwner()) { toast('Hanya Owner yang boleh mengubah wewenang staf.'); return; }
+    if (u.role === 'owner') { toast('Akun Owner selalu memiliki akses penuh — wewenang tidak dapat diubah.'); return; }
     /* Preset role & wewenang khusus harus sudah diambil dari server dulu,
        supaya centang modal mengikuti keadaan sebenarnya (bukan kosong semua
        saat Owner membuka modal untuk pertama kali). */
@@ -380,6 +486,7 @@ window.RasaRoles = (function () {
     const u = (state.staff || []).find(x => String(x.id) === String(id));
     if (!u) { closeModal(); return; }
     if (!isOwner()) { toast('Hanya Owner yang boleh mengubah wewenang staf.'); return; }
+    if (u.role === 'owner') { closeModal(); toast('Akun Owner selalu memiliki akses penuh — wewenang tidak dapat diubah.'); return; }
     if (!state.matrix) { await loadPerms(true); }
     if (!state.matrix) { toast('Preset izin role belum dimuat dari server.'); return; }
     const eff = {};
@@ -417,7 +524,7 @@ window.RasaRoles = (function () {
     }
     if (window.canPerm('staff', 'read') && !$('staffPanel')) {
       grid.insertAdjacentHTML('beforeend', staffPanelHtml());
-      loadStaff();
+      loadStaff(true);   /* selalu segarkan dari database saat panel dibuka */
     }
   }
 
@@ -438,39 +545,133 @@ window.RasaRoles = (function () {
     }
   }
 
-  async function staffToggle(id) {
+  async function staffToggle(id, confirmed) {
     if (!window.canPerm('staff', 'update')) { toast('Anda tidak punya izin mengubah staf.'); return; }
-    const u = (state.staff || []).find(x => x.id === id);
+    const u = (state.staff || []).find(x => String(x.id) === String(id));
     if (!u) return;
+    const active = u.status === 'active';
+
+    /* --- perlindungan akun Owner (juga dijaga server) --- */
+    if (active && u.role === 'owner') {
+      toast('Anda Tidak Memiliki Wewenang untuk Menonaktifkan Akun Owner.');
+      return;
+    }
+    if (active && !confirmed) {
+      openModal(`<div class="modal-head"><span class="provider-mark" style="--pm:#a97c2c">⏻</span><div><b>Nonaktifkan akun?</b><small>${esc(u.name || '')} · ${esc(u.email || '')}</small></div><button class="modal-close" data-action="close-modal" aria-label="Tutup">×</button></div>
+      <p class="modal-text">Akun ini langsung <b>kehilangan akses login</b>: seluruh sesi aktif dicabut dan akun pindah ke tab <b>Akun Nonaktif</b>. Role, permission, email, dan seluruh riwayat aktivitas <b>TETAP tersimpan</b> dan dipulihkan saat akun diaktifkan kembali.</p>
+      <div class="modal-actions"><button class="btn" data-action="close-modal">Batal</button><button class="btn btn-danger" data-action="staff-deact-confirm:${esc(String(u.id))}">Nonaktifkan akun</button></div>`);
+      return;
+    }
     try {
-      await window.RasaAPI.put('/api/staff/' + encodeURIComponent(id), { status: u.status === 'active' ? 'suspended' : 'active' });
-      toast((u.name || 'Staf') + (u.status === 'active' ? ' dinonaktifkan.' : ' diaktifkan.'));
+      await window.RasaAPI.put('/api/staff/' + encodeURIComponent(id), { status: active ? 'inactive' : 'active' });
+      closeModal();
+      toast((u.name || 'Staf') + (active ? ' dinonaktifkan — sesi dicabut, akun pindah ke Akun Nonaktif.' : ' diaktifkan kembali dengan role & permission sebelumnya.'));
       await loadStaff(true);
-    } catch (e) { toast(e.message); }
+    } catch (e) { toast(e.message); await loadStaff(true); }
   }
 
   function staffDelete(id) {
     if (!window.canPerm('staff', 'delete')) { toast('Anda tidak punya izin menghapus staf.'); return; }
-    const u = (state.staff || []).find(x => x.id === id);
+    if (!isOwner()) { toast('Hanya Owner yang boleh menghapus akun secara permanen.'); return; }
+    const u = (state.staff || []).find(x => String(x.id) === String(id));
     if (!u) return;
-    openModal(`<div class="modal-head"><span class="provider-mark" style="--pm:#b0473a">✕</span><div><b>Hapus staf?</b><small>${esc(u.name)} · ${esc(u.email)}</small></div><button class="modal-close" data-action="close-modal" aria-label="Tutup">×</button></div>
-    <p class="modal-text">Akun ini langsung keluar dari restoran Anda dan semua sesinya dicabut. Tindakan ini tercatat di audit log.</p>
-    <div class="modal-actions"><button class="btn" data-action="close-modal">Batal</button><button class="btn btn-danger" data-action="staff-del-confirm:${esc(id)}">Hapus staf</button></div>`);
+    if (u.role === 'owner') { toast('Anda Tidak Memiliki Wewenang untuk Menghapus Akun Owner.'); return; }
+    openModal(`<div class="modal-head"><span class="provider-mark" style="--pm:#b0473a">✕</span><div><b>Hapus permanen?</b><small>${esc(u.name || '')} · ${esc(u.email || '')}</small></div><button class="modal-close" data-action="close-modal" aria-label="Tutup">×</button></div>
+    <p class="modal-text">Akun dihapus <b>permanen</b> dari restoran Anda dan seluruh sesinya dicabut. Data operasional restoran (pesanan, menu, laporan) <b>tidak ikut terhapus</b>; riwayat audit tetap tersimpan. Bila hanya ingin menghentikan akses sementara, gunakan <b>Nonaktifkan</b>.</p>
+    <div class="modal-actions"><button class="btn" data-action="close-modal">Batal</button><button class="btn btn-danger" data-action="staff-del-confirm:${esc(String(u.id))}">Hapus permanen</button></div>`);
   }
 
   async function staffDeleteConfirm(id) {
     if (!window.canPerm('staff', 'delete')) { closeModal(); toast('Anda tidak punya izin menghapus staf.'); return; }
+    if (!isOwner()) { closeModal(); toast('Hanya Owner yang boleh menghapus akun secara permanen.'); return; }
     closeModal();
     try {
       await window.RasaAPI.del('/api/staff/' + encodeURIComponent(id));
-      toast('Staf dihapus.');
+      toast('Akun dihapus permanen — data operasional restoran tetap utuh.');
+      await loadStaff(true);
+    } catch (e) { toast(e.message); await loadStaff(true); }
+  }
+
+  /* ---------- 4c. Tambah & edit informasi staf ---------- */
+  function staffAddModal() {
+    if (!window.canPerm('staff', 'create')) { toast('Anda tidak punya izin menambah staf.'); return; }
+    openModal(`<div class="modal-head"><span class="provider-mark" style="--pm:#a97c2c">＋</span><div><b>Tambah staf</b><small>Akun baru langsung aktif dan bisa masuk dengan email ini</small></div><button class="modal-close" data-action="close-modal" aria-label="Tutup">×</button></div>
+    <label class="field"><span>Nama staf</span><input class="input" id="stfName" maxlength="60" placeholder="Nama lengkap"></label>
+    <label class="field"><span>Email akun</span><input class="input" id="stfEmail" type="email" maxlength="160" placeholder="nama@restoran.com" autocomplete="off"></label>
+    <label class="field"><span>Role</span><select class="input" id="stfRole">${roleOptions('waiter')}</select></label>
+    <div class="modal-actions"><button class="btn" data-action="close-modal">Batal</button><button class="btn btn-primary" data-action="staff-add-save">Tambah staf</button></div>
+    <small class="modal-note">Email yang sudah terdaftar di restoran Anda tidak bisa dipakai ulang. Role dapat diubah kapan saja dari tabel staf, dan wewenang rinci diatur lewat tombol <b>Wewenang</b>.</small>`);
+    const el = document.getElementById('stfName'); if (el && el.focus) el.focus();
+  }
+
+  async function staffAddSave() {
+    if (!window.canPerm('staff', 'create')) { closeModal(); toast('Anda tidak punya izin menambah staf.'); return; }
+    const name = String((document.getElementById('stfName') || {}).value || '').trim();
+    const email = String((document.getElementById('stfEmail') || {}).value || '').trim().toLowerCase();
+    const role = String((document.getElementById('stfRole') || {}).value || 'waiter');
+    if (!name) { toast('Nama staf wajib diisi.'); return; }
+    if (!email) { toast('Email akun wajib diisi.'); return; }
+    try {
+      const res = await window.RasaAPI.post('/api/staff', { name, email, role });
+      closeModal();
+      toast((res.user && res.user.name || name) + ' ditambahkan sebagai ' + (ROLE_LABELS[role] || role) + '.');
       await loadStaff(true);
     } catch (e) { toast(e.message); }
   }
 
+  function staffEditModal(id) {
+    if (!window.canPerm('staff', 'update')) { toast('Anda tidak punya izin mengubah staf.'); return; }
+    const u = (state.staff || []).find(x => String(x.id) === String(id));
+    if (!u) { toast('Staf tidak ditemukan.'); return; }
+    const ownerActor = isOwner();
+    const emailField = ownerActor && String(u.id) !== String((currentUser() || {}).id)
+      ? `<label class="field"><span>Email akun (kebijakan Owner)</span><input class="input" id="stfEmailEdit" type="email" maxlength="160" value="${esc(u.email || '')}" autocomplete="off"></label>`
+      : `<label class="field"><span>Email akun</span><input class="input" value="${esc(u.email || '')}" disabled><small class="subcell">${ownerActor ? 'Email Anda sendiri tidak dapat diubah di sini' : 'Perubahan email hanya dapat dilakukan oleh Owner'}</small></label>`;
+    openModal(`<div class="modal-head"><span class="provider-mark" style="--pm:#a97c2c">✎</span><div><b>Ubah informasi staf</b><small>${esc(u.name || '')} · ${esc(ROLE_LABELS[u.role] || u.role)}</small></div><button class="modal-close" data-action="close-modal" aria-label="Tutup">×</button></div>
+    <label class="field"><span>Nama tampilan</span><input class="input" id="stfNameEdit" maxlength="60" value="${esc(u.name || '')}"></label>
+    <div class="field-row">
+      <label class="field"><span>Telepon pribadi</span><input class="input" id="stfPhoneEdit" maxlength="24" value="${esc(u.phone || '')}" placeholder="0812-3456-7890" autocomplete="off"></label>
+      <label class="field"><span>Role</span><input class="input" value="${esc(ROLE_LABELS[u.role] || u.role)}" disabled><small class="subcell">${u.role === 'owner' ? 'Akun Owner dilindungi' : 'Ubah lewat pilihan Role pada tabel'}</small></label>
+    </div>
+    ${emailField}
+    <div class="modal-actions"><button class="btn" data-action="close-modal">Batal</button><button class="btn btn-primary" data-action="staff-edit-save:${esc(String(u.id))}">Simpan perubahan</button></div>
+    <small class="modal-note">Perubahan divalidasi server dan tercatat di <b>audit log</b>. Nama tampilan pribadi tidak memengaruhi nama restoran maupun akun lain.</small>`);
+    const el = document.getElementById('stfNameEdit'); if (el && el.focus) el.focus();
+  }
+
+  async function staffEditSave(id) {
+    if (!window.canPerm('staff', 'update')) { closeModal(); toast('Anda tidak punya izin mengubah staf.'); return; }
+    const u = (state.staff || []).find(x => String(x.id) === String(id));
+    if (!u) { closeModal(); return; }
+    const body = {};
+    const name = String((document.getElementById('stfNameEdit') || {}).value || '').trim();
+    const phone = String((document.getElementById('stfPhoneEdit') || {}).value || '').trim();
+    const emailEl = document.getElementById('stfEmailEdit');
+    if (name) body.name = name;
+    body.phone = phone;
+    if (emailEl) body.email = String(emailEl.value || '').trim();
+    try {
+      const res = await window.RasaAPI.put('/api/staff/' + encodeURIComponent(id), body);
+      closeModal();
+      toast('Informasi ' + ((res.user && res.user.name) || u.name || 'staf') + ' diperbarui.');
+      await loadStaff(true);
+    } catch (e) { toast(e.message); }
+  }
+
+  function setStaffTab(tab) {
+    state.staffTab = tab === 'inactive' ? 'inactive' : 'active';
+    renderStaff();
+  }
+
   const actions = {
     'staff-invite-jump': () => staffInviteJump(),
+    'staff-tab': id => setStaffTab(id),
+    'staff-add': () => staffAddModal(),
+    'staff-add-save': () => staffAddSave(),
+    'staff-edit': id => staffEditModal(id),
+    'staff-edit-save': id => staffEditSave(id),
     'staff-toggle': id => staffToggle(id),
+    'staff-deact-confirm': id => staffToggle(id, true),
     'staff-del': id => staffDelete(id),
     'staff-del-confirm': id => staffDeleteConfirm(id),
     'staff-perms': id => staffPermsModal(id),
@@ -671,7 +872,14 @@ window.RasaRoles = (function () {
 
     /* perubahan role staf langsung dari tabel */
     document.addEventListener('change', e => {
-      const sel = e.target && e.target.closest ? e.target.closest('[data-staff-role]') : null;
+      const t = e.target;
+      /* filter role pada toolbar Staf & Role */
+      if (t && t.id === 'staffRoleFilter') {
+        state.staffRoleFilter = String(t.value || '');
+        renderStaff();
+        return;
+      }
+      const sel = t && t.closest ? t.closest('[data-staff-role]') : null;
       if (sel) {
         const id = sel.getAttribute('data-staff-role');
         const role = sel.value;
@@ -680,6 +888,20 @@ window.RasaRoles = (function () {
           .then(() => { toast('Role staf diubah menjadi ' + (ROLE_LABELS[role] || role) + '.'); loadStaff(true); })
           .catch(err => { toast(err.message); loadStaff(true); });
         return;
+      }
+    });
+
+    /* tab Akun Aktif / Akun Nonaktif */
+    document.addEventListener('click', e => {
+      const tab = e.target && e.target.closest ? e.target.closest('[data-staff-tab]') : null;
+      if (tab) setStaffTab(tab.getAttribute('data-staff-tab'));
+    });
+
+    /* pencarian nama & email (DOM saja — daftar sudah termuat dari server) */
+    document.addEventListener('input', e => {
+      if (e.target && e.target.id === 'staffSearch') {
+        state.staffQuery = String(e.target.value || '');
+        renderStaff();
       }
     });
 

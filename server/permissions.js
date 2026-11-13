@@ -53,6 +53,8 @@ const KEY_TO_MODULE = Object.assign({}, SECTION_TO_MODULE, {
   logo: 'settings', theme: 'settings', isOpen: 'settings', accounts: 'settings',
   lat: 'settings', lng: 'settings', profile: 'settings', identity: 'settings',
   outlet: 'settings', outlets: 'settings', tables: 'tables',
+  restoAddress: 'settings', restoPhone: 'settings', restoEmail: 'settings',
+  restoWebsite: 'settings', restoSocial: 'settings',
   orders: 'orders', archive: 'orders', products: 'menu', reservations: 'reservations',
   cart: 'pos', inventory: 'inventory', stock: 'inventory', recipes: 'recipes',
   bom: 'recipes', suppliers: 'procurement', purchaseOrders: 'procurement',
@@ -61,6 +63,21 @@ const KEY_TO_MODULE = Object.assign({}, SECTION_TO_MODULE, {
   reports: 'reports', analytics: 'analytics', alerts: 'alerts', audit: 'audit',
   permissions: 'permissions', kitchen: 'kitchen'
 });
+
+/* ============================================================
+   IDENTITAS RESTORAN — hanya Owner yang boleh menulis.
+   Key ini mencakup: logo/foto restoran, nama pemilik, identitas
+   restoran, kontak & media sosial, tampilan/warna, dan lokasi
+   cabang. Diperiksa ulang di server setiap PUT /api/data
+   (lihat server/data.js) sehingga permission Manager TIDAK
+   bisa mengesampingkan aturan ini.
+   ============================================================ */
+export const RESTAURANT_IDENTITY_KEYS = [
+  'restaurantName', 'restaurantLocation', 'brandName',
+  'ownerName', 'ownerRole', 'avatar', 'logo',
+  'lat', 'lng', 'theme', 'restaurantId', 'identity', 'profile',
+  'restoAddress', 'restoPhone', 'restoEmail', 'restoWebsite', 'restoSocial'
+];
 
 /* Key yang tidak dikenal dianggap milik modul 'misc' (boleh dibaca/ditulis semua
    role) — semua key sensitif sudah terdaftar di atas, jadi tidak ada jalan pintas. */

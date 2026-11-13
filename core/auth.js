@@ -230,17 +230,30 @@ window.RasaAuth = (function () {
     toast('Berhasil keluar dari akun.');
   }
 
-  /* ---------- UI akun di sidebar & pengaturan ---------- */
+  /* ---------- UI akun di sidebar & pengaturan ----------
+     Nama tampilan, role, dan FOTO PROFIL pribadi (users.avatar) milik sesi
+     yang sedang login — terpisah dari identitas restoran (logo .settings-avatar). */
   function applyAccountUI() {
     const s = window.RasaSession;
     const name = s.user && (s.user.name || s.user.email) || '';
     const role = (s.user && s.user.role || '').toUpperCase() || 'LOKAL';
+    const photo = (s.user && s.user.avatar) || '';
     document.querySelectorAll('.sidebar .profile span b').forEach(el => { if (name) el.textContent = name; });
     document.querySelectorAll('.sidebar .profile span small').forEach(el => { if (name) el.textContent = role.charAt(0) + role.slice(1).toLowerCase(); });
-    const av = document.querySelector('.sidebar .profile .avatar');
-    if (av && name) av.textContent = initialsOf(name);
-    const pa = document.querySelector('.top-avatar');
-    if (pa && name) pa.textContent = initialsOf(name);
+    const setAvatar = el => {
+      if (!el || !name) return;
+      if (photo) {
+        if (el.dataset.photo !== photo) {
+          el.dataset.photo = photo;
+          el.innerHTML = '<img src="' + photo + '" alt="Foto profil pribadi">';
+        }
+      } else {
+        delete el.dataset.photo;
+        el.textContent = initialsOf(name);
+      }
+    };
+    setAvatar(document.querySelector('.sidebar .profile .avatar'));
+    setAvatar(document.querySelector('.top-avatar'));
   }
 
   function accountPanel() {

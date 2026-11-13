@@ -1614,6 +1614,83 @@ html.gate-open,html.gate-open body{overflow:hidden}
   .input-sm{width:104px}
 }
 
+/* ============================================================
+   Staf & Role — tab Akun Aktif / Akun Nonaktif, toolbar,
+   aksi Ubah, serta proteksi identitas restoran (read-only)
+   ============================================================ */
+.staff-head-actions{display:flex;gap:10px;align-items:center;flex:none}
+.staff-head-actions .btn{white-space:nowrap}
+.staff-tabs{display:flex;gap:6px;margin-bottom:12px;border-bottom:1px solid var(--line);padding-bottom:10px;flex-wrap:wrap}
+.staff-tab{
+  display:inline-flex;align-items:center;gap:7px;
+  min-height:34px;padding:7px 14px;border-radius:10px;
+  border:1px solid var(--line);background:var(--panel-2);
+  font:700 11px/1 'Plus Jakarta Sans',sans-serif;color:var(--muted);
+  cursor:pointer;transition:.16s ease}
+.staff-tab:hover{border-color:var(--gold);color:var(--ink-soft)}
+.staff-tab.is-active{
+  background-color:var(--accent-grad-solid);
+  background-image:var(--gloss-on-color),var(--accent-grad);
+  border-color:var(--gold-deep);color:var(--primary-on);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.5)}
+.staff-tab-count{
+  display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 6px;
+  border-radius:999px;background:rgba(0,0,0,.08);font-size:10px;font-weight:800}
+.staff-tab.is-active .staff-tab-count{background:rgba(255,255,255,.28)}
+.staff-toolbar{display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.staff-toolbar .staff-search{flex:1 1 220px;min-width:160px}
+.staff-toolbar .staff-filter{flex:0 1 190px;min-width:150px}
+.staff-act.is-edit{
+  border-color:rgba(var(--gold-rgb),.55);background:var(--gold-tint);color:var(--ink)}
+.staff-act.is-edit:hover{border-color:var(--gold);background:var(--gold-tint);color:var(--ink)}
+@media(max-width:760px){
+  .staff-head-actions{width:100%;justify-content:space-between}
+  .staff-tabs{gap:5px}
+  .staff-tab{flex:1 1 auto;justify-content:center;padding:9px 10px}
+}
+
+/* --- Proteksi identitas restoran: non-Owner hanya membaca --- */
+.ro-note{
+  display:flex;gap:8px;align-items:flex-start;
+  margin-top:12px;padding:10px 12px;border-radius:10px;
+  border:1px dashed rgba(var(--gold-rgb),.6);background:var(--gold-tint);
+  font-size:9px;line-height:1.7;color:var(--ink-soft)}
+.ro-note b{color:var(--ink)}
+.ro-lock{
+  display:inline-flex;align-items:center;gap:4px;margin-left:6px;
+  padding:2px 7px;border-radius:999px;
+  background:var(--gold-tint);border:1px solid rgba(var(--gold-rgb),.55);
+  font-size:8px;font-weight:800;letter-spacing:.4px;color:var(--ink-soft);
+  text-transform:uppercase;vertical-align:middle}
+.input:disabled,select.input:disabled,input.input:disabled{
+  background:var(--panel-2);color:var(--muted);cursor:not-allowed;
+  border-color:var(--hairline);opacity:.9}
+.input:disabled::placeholder{color:#c4b9a6}
+.theme-card.is-locked{cursor:not-allowed;opacity:.55;filter:grayscale(.35)}
+.theme-card.is-locked:hover{transform:none;box-shadow:none;border-color:var(--line)}
+
+/* --- Profil pribadi (terpisah dari identitas restoran) --- */
+.personal-avatar{border-color:rgba(var(--gold-rgb),.7);background:var(--gold-tint)}
+.badge-role{
+  display:inline-flex;align-items:center;gap:5px;flex:none;
+  padding:5px 12px;border-radius:999px;
+  background-color:var(--accent-grad-solid);
+  background-image:var(--gloss-on-color),var(--accent-grad);
+  border:1px solid var(--gold-deep);
+  color:var(--primary-on);font:800 10px/1 'Plus Jakarta Sans',sans-serif;
+  letter-spacing:.4px;text-transform:uppercase;white-space:nowrap}
+.pf-security{
+  display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap;
+  margin-top:6px;padding:13px 15px;border-radius:12px;
+  background:var(--panel-2);border:1px solid var(--line)}
+.pf-security b{display:block;font:700 13px 'Fraunces',Georgia,serif;color:var(--ink);margin-bottom:4px}
+.pf-security small{display:block;font-size:9px;line-height:1.7;color:var(--muted);max-width:640px}
+.pf-security .btn{flex:none}
+@media(max-width:760px){
+  .pf-security{flex-direction:column;align-items:stretch}
+  .pf-security .btn{width:100%;justify-content:center}
+}
+
 
 /* ============================================================
    12. BLOK D - persediaan, resep (BOM), penyesuaian stok

@@ -1697,13 +1697,31 @@ function applyIdentity(){
   const loc=(store.restaurantLocation||'').trim()||'Lokasi belum diatur';
   const owner=(store.ownerName||'').trim()||'Pemilik';
   const role=(store.ownerRole||'').trim()||'Owner';
-  const ini=initialsOf(owner);
+  /* identitas PRIBADI pengguna yang sedang login: sidebar & bilah atas memakai
+     nama tampilan, role, dan foto milik akun tersebut — bukan identitas restoran */
+  const u=sessionUser();
+  const meName=u?String(u.name||u.email||''):owner;
+  const meRole=u?roleName(u.role):role;
+  const mePhoto=u?String(u.avatar||''):String(store.avatar||'');
+  const ini=initialsOf(meName);
   const branchName=document.querySelector('.branch b');if(branchName)branchName.textContent=name;
   const branchLoc=document.querySelector('.branch small');if(branchLoc)branchLoc.textContent=loc;
-  const profName=document.querySelector('.profile b');if(profName)profName.textContent=owner;
-  const profRole=document.querySelector('.profile small');if(profRole)profRole.textContent=role;
-  document.querySelectorAll('.avatar,.top-avatar,.settings-avatar').forEach(el=>{
-    if(store.avatar){el.innerHTML='<img src="'+store.avatar+'" alt="Foto profil">'}
+  const profName=document.querySelector('.profile b');if(profName)profName.textContent=meName;
+  const profRole=document.querySelector('.profile small');if(profRole)profRole.textContent=meRole;
+  /* .settings-avatar = LOGO restoran (panel identitas) — tidak pernah foto pribadi */
+  document.querySelectorAll('.settings-avatar').forEach(el=>{
+    if(store.avatar){el.innerHTML='<img src="'+store.avatar+'" alt="Logo restoran">'}
+    else{el.textContent=initialsOf(owner)}
+  });
+  /* pratinjau foto profil pribadi pada panel Profil Pribadi */
+  const pf=document.getElementById('pfAvatarPreview');
+  if(pf){
+    if(mePhoto){pf.innerHTML='<img src="'+mePhoto+'" alt="Foto profil pribadi">'}
+    else{pf.textContent=ini}
+  }
+  /* .avatar (sidebar) & .top-avatar = identitas pribadi pengguna */
+  document.querySelectorAll('.avatar,.top-avatar').forEach(el=>{
+    if(mePhoto){el.innerHTML='<img src="'+mePhoto+'" alt="Foto profil">'}
     else{el.textContent=ini}
   });
   const eye=document.querySelector('.eyebrow');if(eye)eye.textContent=name.toUpperCase()+' · '+DATE_LABEL;
@@ -2607,27 +2625,42 @@ function cropSquare(dataUrl,size,cb){
   img.src=dataUrl;
 }
 function handleAvatarFile(file){
+  if(!ownerEdit()){toast('Identitas restoran hanya dapat diubah oleh Owner.');return}
   if(!file)return;
   if(!/^image\//.test(file.type)){toast('Pilih file gambar (JPG atau PNG).');return}
   if(file.size>8*1024*1024){toast('Ukuran gambar maksimal 8 MB.');return}
   const reader=new FileReader();
   reader.onload=e=>cropSquare(e.target.result,320,url=>{
     store.avatar=url;
-    if(saveStore()){applyIdentity();toast('Foto profil diperbarui — logo ikut menyesuaikan.')}
+    if(saveStore()){applyIdentity();toast('Logo restoran diperbarui — tampil di seluruh akun staf.')}
   });
   reader.onerror=()=>toast('File gagal dibaca.');
   reader.readAsDataURL(file);
 }
 function removeAvatar(){
+  if(!ownerEdit()){toast('Identitas restoran hanya dapat diubah oleh Owner.');return}
   if(!store.avatar){toast('Belum ada foto profil yang dipasang.');return}
   store.avatar='';
   saveStore();applyIdentity();
-  toast('Foto profil dihapus. Logo kembali ke huruf inisial.');
+  toast('Logo restoran dihapus. Logo kembali ke huruf inisial.');
 }
 
+/* ---------- Identitas restoran (Owner) vs profil pribadi (per akun) ----------
+   Mode lokal (tanpa login) dianggap pemilik data perangkat sehingga semua
+   pengaturan tetap bisa dicoba; pada sesi login, HANYA role owner yang boleh
+   mengubah identitas restoran — role lain hanya membaca (dicek ulang server). */
+/* pakai function declaration agar aman dipanggil saat boot (hoisting) */
+function sessionUser(){return (window.RasaSession&&window.RasaSession.user)||null}
+function ownerEdit(){const u=sessionUser();return !u||u.role==='owner'}
+const ROLE_NAMES={owner:'Owner',manager:'Manager',kasir:'Kasir',kitchen:'Kitchen',waiter:'Waiter'};
+function roleName(id){return ROLE_NAMES[id]||String(id||'')}
+function personalThemeId(){const u=sessionUser();return (u&&u.theme)||''}
 /* ---------- Halaman pengaturan ---------- */
 function applyTheme(){
-  const t=THEMES.some(x=>x.id===store.theme)?store.theme:'espresso';
+  /* tema pribadi (per akun) mengalahkan tema restoran — tampilan restoran
+     tetap ditentukan Owner dan tidak berubah bagi akun lain */
+  const cands=[personalThemeId(),store.theme,'espresso'];
+  const t=cands.find(x=>THEMES.some(y=>y.id===x))||'espresso';
   const el=(typeof document!=='undefined')&&document.documentElement;
   if(el&&el.setAttribute)el.setAttribute('data-theme',t);
   /* samakan warna chrome browser (bilah atas HP) dengan tema aktif */
@@ -2638,6 +2671,7 @@ function applyTheme(){
   }catch(e){}
 }
 function setTheme(id){
+  if(!ownerEdit()){toast('Tampilan & warna restoran hanya dapat diubah oleh Owner. Gunakan tema pribadi di panel Profil Pribadi.');return}
   if(!THEMES.some(t=>t.id===id)){toast('Tema tidak ditemukan.');return}
   store.theme=id;
   if(!saveStore()){toast('Gagal menyimpan tema.');return}
@@ -2645,9 +2679,10 @@ function setTheme(id){
   render('settings');
   toast('Tampilan "'+THEMES.find(t=>t.id===id).name+'" diterapkan.');
 }
-function themeCard(t){
+function themeCard(t,locked){
   const sel=(store.theme||'espresso')===t.id;
-  return '<button class="theme-card'+(sel?' selected':'')+'" data-action="set-theme:'+t.id+'" aria-pressed="'+(sel?'true':'false')+'">'+
+  /* tema restoran = identitas Owner: non-Owner hanya melihat (read-only) */
+  return '<button class="theme-card'+(sel?' selected':'')+(locked?' is-locked':'')+'"'+(locked?' disabled title="Tampilan restoran hanya dapat diubah oleh Owner"':' data-action="set-theme:'+t.id+'"')+' aria-pressed="'+(sel?'true':'false')+'">'+
     '<span class="theme-sw">'+t.sw.map(c=>'<i style="background:'+c+'"></i>').join('')+'</span>'+
     '<b>'+esc(t.name)+'<span class="theme-ok">✓ Terpilih</span></b><small>'+esc(t.desc)+'</small></button>';
 }
@@ -2658,71 +2693,185 @@ function providerCard(p){
     : '<button class="btn btn-primary" data-action="connect:'+p.id+'">Hubungkan</button>';
   return '<div class="provider-card'+(acc?' connected':'')+'"><span class="provider-mark" style="--pm:'+p.hue+'">'+p.mark+'</span><div class="provider-info"><b>'+p.name+'</b><small>'+(acc?'Tersambung · '+esc(acc.handle):p.desc)+'</small></div>'+right+'</div>';
 }
+/* ---------- Profil pribadi pengguna (user_profile) ----------
+   Tersimpan di server lewat /api/profile — TERPISAH dari identitas restoran
+   (workspace). Hanya pemilik sesi yang boleh mengubah profilnya sendiri. */
+let pfTimer=null;
+function saveProfilePatch(patch,note){
+  const u=sessionUser();
+  if(!u){toast('Masuk dengan akun Anda untuk mengubah profil pribadi.');return Promise.resolve(null)}
+  return window.RasaAPI.put('/api/profile',patch).then(res=>{
+    const s=window.RasaSession;
+    if(s.user&&res&&res.user)Object.assign(s.user,res.user);
+    else if(s.user&&res&&res.profile)Object.assign(s.user,res.profile);
+    applyIdentity();
+    if(note)toast(note);
+    return res;
+  }).catch(e=>{toast(e.message);return null});
+}
+function scheduleProfileSave(){
+  clearTimeout(pfTimer);
+  pfTimer=setTimeout(()=>{
+    const nameEl=document.getElementById('pfName');
+    const u=sessionUser();
+    if(!nameEl||!u)return;
+    const phoneEl=document.getElementById('pfPhone');
+    const patch={};
+    const nm=String(nameEl.value||'').trim();
+    const ph=String(phoneEl?phoneEl.value:'').trim();
+    if(nm&&nm!==String(u.name||''))patch.name=nm;
+    if(ph!==String(u.phone||''))patch.phone=ph;
+    if(!Object.keys(patch).length)return;
+    saveProfilePatch(patch,'Profil pribadi diperbarui.');
+  },700);
+}
+function handleProfilePhoto(file){
+  if(!sessionUser()){toast('Masuk dengan akun Anda untuk mengubah foto profil.');return}
+  if(!file)return;
+  if(!/^image\//.test(file.type)){toast('Pilih file gambar (JPG atau PNG).');return}
+  if(file.size>8*1024*1024){toast('Ukuran gambar maksimal 8 MB.');return}
+  const reader=new FileReader();
+  reader.onload=e=>cropSquare(e.target.result,320,url=>{
+    saveProfilePatch({avatar:url},'Foto profil pribadi diperbarui — hanya milik Anda, tidak mengubah logo restoran.').then(()=>{
+      render('settings',true);
+    });
+  });
+  reader.onerror=()=>toast('File gagal dibaca.');
+  reader.readAsDataURL(file);
+}
+function removeProfilePhoto(){
+  saveProfilePatch({avatar:''},'Foto profil pribadi dihapus.').then(()=>{render('settings',true)});
+}
+function askLogoutAll(){
+  if(!sessionUser()){window.RasaAuth&&window.RasaAuth.showGate();return}
+  openModal('<div class="modal-head"><span class="provider-mark" style="--pm:#b0473a">⏻</span><div><b>Keluar dari semua perangkat?</b><small>'+esc(sessionUser().email||'')+'</small></div><button class="modal-close" data-action="close-modal" aria-label="Tutup">×</button></div>'+
+    '<p class="modal-text">Seluruh sesi aktif akun ini — termasuk perangkat ini — langsung dicabut di server. Masuk kembali dengan kode OTP ke email Anda untuk melanjutkan.</p>'+
+    '<div class="modal-actions"><button class="btn" data-action="close-modal">Batal</button><button class="btn btn-danger" data-action="profile-logout-all-confirm">Cabut semua sesi</button></div>');
+}
+async function logoutAllConfirmed(){
+  closeModal();
+  try{
+    await window.RasaAPI.post('/api/auth/logout-all');
+  }catch(e){toast(e.message);return}
+  window.RasaSession.clear();
+  window.RasaSync.stop();
+  applyIdentity();
+  toast('Seluruh sesi akun berhasil dicabut.');
+  if(window.RasaAuth)window.RasaAuth.showGate('Seluruh sesi akun telah dicabut. Masuk kembali dengan kode OTP untuk melanjutkan.');
+}
+function profilePanel(){
+  const u=sessionUser();
+  if(!u)return '';
+  const cur=String(u.theme||'');
+  const themeOpts='<option value=""'+(cur?'':' selected')+'>Ikuti tema restoran</option>'+
+    THEMES.map(t=>'<option value="'+t.id+'"'+(cur===t.id?' selected':'')+'>'+esc(t.name)+'</option>').join('');
+  const ini=initialsOf(u.name||u.email||'');
+  const photo=String(u.avatar||'');
+  return `
+    <div class="panel span-2" id="profilePanel">
+      <div class="panel-head"><div><div class="panel-title">Profil pribadi Anda</div>
+      <div class="panel-caption">Terpisah dari identitas restoran · hanya Anda yang dapat mengubah data ini</div></div>
+      <span class="badge-role">${esc(roleName(u.role))}</span></div>
+      <div class="profile-editor">
+        <div class="settings-avatar personal-avatar" id="pfAvatarPreview">${photo?'<img src="'+photo+'" alt="Foto profil pribadi">':esc(ini)}</div>
+        <div class="profile-actions">
+          <label class="btn btn-primary" for="pfPhotoInput"><span class="btn-icon">📷</span> Ganti foto profil</label>
+          <input type="file" id="pfPhotoInput" accept="image/*" hidden>
+          ${photo?'<button class="btn" data-action="profile-photo-remove">Hapus foto</button>':''}
+          <small>Foto profil pribadi (JPG/PNG maksimal 8 MB, dipotong persegi). Foto ini <b>tidak memengaruhi</b> logo restoran maupun foto staf lain.</small>
+        </div>
+      </div>
+      <div class="field-row">
+        <label class="field"><span>Nama tampilan</span><input class="input" id="pfName" value="${esc(u.name||'')}" maxlength="60" placeholder="Nama Anda" autocomplete="off"></label>
+        <label class="field"><span>Nomor telepon pribadi</span><input class="input" id="pfPhone" value="${esc(u.phone||'')}" maxlength="24" placeholder="0812-3456-7890" autocomplete="off"></label>
+      </div>
+      <div class="field-row">
+        <label class="field"><span>Jabatan (role)</span><input class="input" value="${esc(roleName(u.role))}" disabled><small class="subcell">Diatur oleh Owner lewat halaman Staf &amp; Role — tidak bisa diubah sendiri</small></label>
+        <label class="field"><span>Email akun</span><input class="input" value="${esc(u.email||'')}" disabled><small class="subcell">Perubahan email hanya melalui kebijakan Owner</small></label>
+      </div>
+      <label class="field"><span>Tema tampilan pribadi</span><select class="input" id="pfTheme">${themeOpts}</select><small class="subcell">Berlaku hanya untuk akun Anda — tampilan restoran tetap mengikuti pilihan Owner</small></label>
+      <div class="pf-security">
+        <div><b>Keamanan akun</b><small>Masuk memakai kode OTP 6 digit ke email Anda — tidak ada kata sandi yang disimpan di server. Bila merasa sesi Anda tidak aman, cabut seluruh sesi aktif dari semua perangkat.</small></div>
+        <button class="btn btn-danger" data-action="profile-logout-all">⏻ Keluar dari semua perangkat</button>
+      </div>
+      <div class="hint">Perubahan nama, telepon, foto, dan tema pribadi tersimpan otomatis dan hanya berlaku untuk akun Anda — <b>tidak mengubah</b> nama Owner, nama restoran, maupun data staf lain.</div>
+    </div>`;
+}
 function settingsPage(){
   const linked=providers.filter(p=>store.accounts[p.id]).length;
-  return `${heading('Pengaturan & akun','Sesuaikan foto profil, nama restoran, dan akun yang ditautkan. Semua perubahan tersimpan otomatis dan tersinkron dengan akun email Anda — termasuk saat tab ditutup.','')}
+  const owner=ownerEdit();                 /* mode lokal ATAU sesi Owner */
+  const dis=owner?'':' disabled';          /* kolom identitas restoran = read-only */
+  const lock=owner?'':' <span class="ro-lock">🔒 Owner</span>';
+  const roNote=owner?'':'<div class="ro-note"><b>🔒 Identitas restoran</b> — hanya <b>Owner</b> yang boleh mengubah bagian ini. Anda hanya dapat melihatnya; permintaan perubahan lewat API pun ditolak oleh server.</div>';
+  return `${heading('Pengaturan & akun',owner?'Atur identitas restoran, profil pribadi Anda, dan akun yang ditautkan — semua perubahan tersimpan otomatis dan tersinkron dengan seluruh perangkat.':'Lihat identitas restoran (diatur Owner), kelola profil pribadi Anda, dan sesuaikan tampilan akun ini.','')}
   <div class="settings-grid">
     <div class="panel">
-      <div class="panel-head"><div><div class="panel-title">Foto profil & pemilik</div><div class="panel-caption">Tampil di sidebar dan bilah atas</div></div></div>
+      <div class="panel-head"><div><div class="panel-title">Foto profil & pemilik</div><div class="panel-caption">Logo restoran — tampil di sidebar, struk, dan seluruh akun staf${lock}</div></div></div>
       <div class="profile-editor">
         <div class="settings-avatar"></div>
-        <div class="profile-actions">
+        ${owner?`<div class="profile-actions">
           <label class="btn btn-primary" for="avatarInput"><span class="btn-icon">📷</span> Ganti foto</label>
           <input type="file" id="avatarInput" accept="image/*" hidden>
           <button class="btn" data-action="remove-avatar">Hapus foto</button>
-          <small>Format JPG/PNG, maksimal 8 MB, dipotong otomatis jadi persegi. Foto ini juga otomatis dipakai sebagai <b>logo di pojok kiri atas</b>.</small>
-        </div>
+          <small>Format JPG/PNG, maksimal 8 MB, dipotong otomatis jadi persegi. Foto ini juga otomatis dipakai sebagai <b>logo di pojok kiri atas</b> — tampil konsisten untuk semua akun staf.</small>
+        </div>`:`<div class="profile-actions"><small>Logo restoran hanya dapat diubah oleh <b>Owner</b>. Untuk foto profil Anda sendiri, gunakan panel <b>Profil pribadi Anda</b> di bawah.</small></div>`}
       </div>
-      <label class="field"><span>Nama pemilik</span><input class="input" id="ownerInput" value="${esc(store.ownerName)}" maxlength="40" placeholder="Nama Anda"></label>
-      <label class="field"><span>Jabatan</span><input class="input" id="roleInput" value="${esc(store.ownerRole)}" maxlength="24" placeholder="Owner"></label>
+      <label class="field"><span>Nama pemilik</span><input class="input" id="ownerInput" value="${esc(store.ownerName)}" maxlength="40" placeholder="Nama Anda"${dis}></label>
+      <label class="field"><span>Jabatan</span><input class="input" id="roleInput" value="${esc(store.ownerRole)}" maxlength="24" placeholder="Owner"${dis}></label>
       <div class="hint">Logo <b>brand</b>, judul tab browser, dan kalimat sapaan pada halaman Ringkasan otomatis mengikuti <b>nama restoran</b> di panel Identitas restoran.</div>
+      ${roNote}
     </div>
 
     <div class="panel">
-      <div class="panel-head"><div><div class="panel-title">Identitas restoran</div><div class="panel-caption">Nama tampil langsung di sidebar dan judul halaman</div></div></div>
-      <label class="field"><span>Nama restoran</span><input class="input" id="restoInput" value="${esc(store.restaurantName)}" maxlength="34" placeholder="Nama restoran Anda"></label>
+      <div class="panel-head"><div><div class="panel-title">Identitas restoran</div><div class="panel-caption">Nama tampil langsung di sidebar dan judul halaman${lock}</div></div></div>
+      <label class="field"><span>Nama restoran</span><input class="input" id="restoInput" value="${esc(store.restaurantName)}" maxlength="34" placeholder="Nama restoran Anda"${dis}></label>
       <div class="name-preview"><span class="np-mark">⌂</span><span><b id="namePreviewText">${esc(store.restaurantName)}</b><small id="namePreviewLoc">${esc(store.restaurantLocation)}</small></span></div>
       <div class="name-preview" style="margin-top:10px"><span class="np-mark" id="brandPreviewMark">r.</span><span><b id="brandPreviewText">${esc(brandLabel())}</b><small>Logo brand & judul tab</small></span></div>
       <div class="hint">Perubahan tersimpan otomatis saat Anda mengetik. Klik profil di sidebar untuk kembali ke sini kapan saja.</div>
+      ${roNote}
     </div>
 
+    ${profilePanel()}
+
     <div class="panel span-2">
-      <div class="panel-head"><div><div class="panel-title">Kontak & media sosial restoran</div><div class="panel-caption">Tampil di struk pelanggan, bagikan struk WhatsApp/email, dan halaman publik</div></div></div>
-      <label class="field"><span>Alamat restoran</span><input class="input" id="restoAddress" value="${esc(store.restoAddress||'')}" maxlength="90" placeholder="Jl. Merdeka No. 12, Jakarta Selatan"></label>
+      <div class="panel-head"><div><div class="panel-title">Kontak & media sosial restoran</div><div class="panel-caption">Tampil di struk pelanggan, bagikan struk WhatsApp/email, dan halaman publik${lock}</div></div></div>
+      <label class="field"><span>Alamat restoran</span><input class="input" id="restoAddress" value="${esc(store.restoAddress||'')}" maxlength="90" placeholder="Jl. Merdeka No. 12, Jakarta Selatan"${dis}></label>
       <div class="field-row">
-        <label class="field"><span>Nomor telepon / WhatsApp</span><input class="input" id="restoPhone" value="${esc(store.restoPhone||'')}" maxlength="24" placeholder="0812-3456-7890" autocomplete="off"></label>
-        <label class="field"><span>Email restoran</span><input class="input" id="restoEmail" type="email" value="${esc(store.restoEmail||'')}" maxlength="60" placeholder="halo@rasa.id" autocomplete="off"></label>
+        <label class="field"><span>Nomor telepon / WhatsApp</span><input class="input" id="restoPhone" value="${esc(store.restoPhone||'')}" maxlength="24" placeholder="0812-3456-7890" autocomplete="off"${dis}></label>
+        <label class="field"><span>Email restoran</span><input class="input" id="restoEmail" type="email" value="${esc(store.restoEmail||'')}" maxlength="60" placeholder="halo@rasa.id" autocomplete="off"${dis}></label>
       </div>
       <div class="field-row">
-        <label class="field"><span>Website</span><input class="input" id="restoWebsite" value="${esc(store.restoWebsite||'')}" maxlength="60" placeholder="rasa.id" autocomplete="off"></label>
-        <label class="field"><span>Media sosial</span><input class="input" id="restoSocial" value="${esc(store.restoSocial||'')}" maxlength="60" placeholder="@rasa.id" autocomplete="off"></label>
+        <label class="field"><span>Website</span><input class="input" id="restoWebsite" value="${esc(store.restoWebsite||'')}" maxlength="60" placeholder="rasa.id" autocomplete="off"${dis}></label>
+        <label class="field"><span>Media sosial</span><input class="input" id="restoSocial" value="${esc(store.restoSocial||'')}" maxlength="60" placeholder="@rasa.id" autocomplete="off"${dis}></label>
       </div>
       <div class="hint">Data ini menjadi <b>satu-satunya</b> sumber identitas kontak pada struk pelanggan (bagian identitas dan bagian bawah struk). Isi yang kosong otomatis memakai nama lokasi / cabang di atas.</div>
+      ${roNote}
     </div>
 
     <div class="panel span-2">
-      <div class="panel-head"><div><div class="panel-title">Tampilan & warna</div><div class="panel-caption">6 pilihan color grading — bebas diganti kapan saja, tersimpan otomatis</div></div></div>
-      <div class="theme-grid">${THEMES.map(themeCard).join('')}</div>
-      <div class="hint">Tema mengubah warna sidebar, kanvas, tombol, aksen, kartu, hingga grafik Ringkasan sekaligus. Pilihan tema <b>tetap dipertahankan</b> meski data operasional di-reset.</div>
+      <div class="panel-head"><div><div class="panel-title">Tampilan & warna</div><div class="panel-caption">6 pilihan color grading — ${owner?'bebas diganti kapan saja, tersimpan otomatis':'pilihan Owner untuk seluruh staf'}</div></div></div>
+      <div class="theme-grid">${THEMES.map(t=>owner?themeCard(t):themeCard(t,true)).join('')}</div>
+      <div class="hint">Tema mengubah warna sidebar, kanvas, tombol, aksen, kartu, hingga grafik Ringkasan sekaligus. Pilihan tema <b>tetap dipertahankan</b> meski data operasional di-reset.${owner?'':' Untuk tampilan pribadi Anda, pilih <b>Tema tampilan pribadi</b> di panel <b>Profil pribadi Anda</b>.'}</div>
+      ${roNote}
     </div>
 
     <div class="panel span-2">
-      <div class="panel-head"><div><div class="panel-title">Lokasi cabang & Google Maps</div><div class="panel-caption">Tentukan titik koordinat agar setiap orang bisa membuka lokasi cabang Anda</div></div><button class="link-btn" data-action="open-maps">Buka di Google Maps ↗</button></div>
+      <div class="panel-head"><div><div class="panel-title">Lokasi cabang & Google Maps</div><div class="panel-caption">Tentukan titik koordinat agar setiap orang bisa membuka lokasi cabang Anda${lock}</div></div><button class="link-btn" data-action="open-maps">Buka di Google Maps ↗</button></div>
       <div class="map-grid">
         <div>
-          <label class="field"><span>Nama lokasi / cabang</span><input class="input" id="locInput" value="${esc(store.restaurantLocation)}" maxlength="40" placeholder="Kota / area / cabang"></label>
+          <label class="field"><span>Nama lokasi / cabang</span><input class="input" id="locInput" value="${esc(store.restaurantLocation)}" maxlength="40" placeholder="Kota / area / cabang"${dis}></label>
           <div class="field-row">
-            <label class="field"><span>Latitude</span><input class="input" id="latInput" inputmode="decimal" value="${esc(store.lat)}" placeholder="-6.244170" autocomplete="off"></label>
-            <label class="field"><span>Longitude</span><input class="input" id="lngInput" inputmode="decimal" value="${esc(store.lng)}" placeholder="106.799300" autocomplete="off"></label>
+            <label class="field"><span>Latitude</span><input class="input" id="latInput" inputmode="decimal" value="${esc(store.lat)}" placeholder="-6.244170" autocomplete="off"${dis}></label>
+            <label class="field"><span>Longitude</span><input class="input" id="lngInput" inputmode="decimal" value="${esc(store.lng)}" placeholder="106.799300" autocomplete="off"${dis}></label>
           </div>
           <div class="btn-row">
-            <button class="btn btn-primary" data-action="use-location">◎ Gunakan lokasi saya</button>
+            ${owner?'<button class="btn btn-primary" data-action="use-location">◎ Gunakan lokasi saya</button>':''}
             <button class="btn" data-action="open-maps">Lihat di peta</button>
           </div>
-          <div class="field-row paste-row">
+          ${owner?`<div class="field-row paste-row">
             <label class="field"><span>atau tempel tautan Google Maps</span><input class="input" id="mapsPaste" placeholder="https://www.google.com/maps/place/…" autocomplete="off"></label>
             <button class="btn paste-btn" data-action="paste-maps">Ambil koordinat</button>
-          </div>
+          </div>`:''}
         </div>
         <div class="map-preview">
           <div class="map-pin">⌖</div>
@@ -2733,6 +2882,7 @@ function settingsPage(){
         </div>
       </div>
       <div class="hint">Isi manual <b>Latitude/Longitude</b>, klik <b>Gunakan lokasi saya</b> (izin GPS browser), atau tempel tautan Google Maps — koordinat tersimpan bersama cabang sehingga link peta bisa dibagikan ke siapa saja.</div>
+      ${roNote}
     </div>
 
     ${statusPanel()}
@@ -2904,6 +3054,8 @@ const ACTION_PERM={
   'recipe-add':['recipes','create'],'recipe-edit:':['recipes','update'],'recipe-save':['recipes','update'],'recipe-remove:':['recipes','delete'],
   'journal-add':['accounting','create'],'journal-save':['accounting','create'],'journal-line-add':['accounting','create'],'export-journal':['accounting','export'],
   'staff-toggle:':['staff','update'],'staff-del:':['staff','delete'],'staff-del-confirm:':['staff','delete'],'staff-perms:':['permissions','update'],
+  'staff-add':['staff','create'],'staff-add-save':['staff','create'],'staff-edit:':['staff','update'],'staff-edit-save:':['staff','update'],
+  'staff-deact-confirm:':['staff','update'],'staff-perms-save:':['permissions','update'],
   'invite-send':['staff','create'],'invite-form-toggle':['staff','create'],'invite-revoke:':['staff','delete'],'invite-revoke-confirm:':['staff','delete'],
   'checkout':['orders|antar','update'],'pay-now':['orders|antar','update'],
   'reset-data':['settings','delete']
@@ -2934,8 +3086,15 @@ document.addEventListener('click',e=>{
   const action=el.dataset.action;
   if(!actionAllowed(action))return;   /* izin dicek sebelum aksi dijalankan */
   const arg=action.includes(':')?action.split(':')[1]:'';
+  /* --- proteksi identitas restoran di frontend (server juga menolak) --- */
+  if((action==='remove-avatar'||action==='use-location'||action==='paste-maps'||action.startsWith('set-theme:'))&&!ownerEdit()){
+    toast('Identitas restoran hanya dapat diubah oleh Owner.');return}
   if(action==='close-modal'||action==='finish-auth'){closeModal();return}
   if(action==='remove-avatar'){removeAvatar();return}
+  /* --- profil pribadi (hanya sesi login milik sendiri) --- */
+  if(action==='profile-photo-remove'){removeProfilePhoto();return}
+  if(action==='profile-logout-all'){askLogoutAll();return}
+  if(action==='profile-logout-all-confirm'){logoutAllConfirmed();return}
   if(action==='booking'){openResForm();return}
   if(action==='save-res'||action==='res-confirm'){openResConfirm();return}
   if(action==='res-back'){resBackToForm();return}
@@ -3044,6 +3203,10 @@ document.addEventListener('click',e=>{
 /* Perubahan pengaturan disimpan otomatis saat diketik */
 document.addEventListener('input',e=>{
   const id=e.target.id;
+  /* --- profil pribadi (server /api/profile) — bukan identitas restoran --- */
+  if(id==='pfName'||id==='pfPhone'){scheduleProfileSave();return}
+  /* --- kolom identitas restoran: hanya Owner yang boleh menulis --- */
+  if(['restoInput','locInput','ownerInput','roleInput','restoAddress','restoPhone','restoEmail','restoWebsite','restoSocial','latInput','lngInput'].indexOf(id)>=0&&!ownerEdit()){return}
   if(id==='restoInput'){store.restaurantName=e.target.value}
   else if(id==='locInput'){store.restaurantLocation=e.target.value}
   else if(id==='ownerInput'){store.ownerName=e.target.value}
@@ -3110,6 +3273,11 @@ function clearMenuSearch(){
 }
 document.addEventListener('change',e=>{
   if(e.target.id==='avatarInput'){handleAvatarFile(e.target.files&&e.target.files[0]);e.target.value=''}
+  else if(e.target.id==='pfPhotoInput'){handleProfilePhoto(e.target.files&&e.target.files[0]);e.target.value=''}
+  else if(e.target.id==='pfTheme'){
+    const v=String(e.target.value||'');
+    saveProfilePatch({theme:v},v?'Tema pribadi diterapkan — hanya untuk akun Anda.':'Tema pribadi dikembalikan ke tema restoran.');
+  }
   else if(e.target.id==='mfImage'){handleMenuImage(e.target.files&&e.target.files[0]);e.target.value=''}
   else if(e.target.id==='pvQty'||e.target.name==='pvV'){pvPickChanged(e.target)}
   else if(e.target.id==='resDur'){

@@ -30,18 +30,30 @@ CREATE TABLE IF NOT EXISTS outlets (
 );
 
 -- Akun pengguna. OTP TIDAK PERNAH dijadikan identitas permanen.
+-- Kolom identitas PRIBADI (avatar, name, phone, theme) terpisah dari
+-- identitas restoran (tabel restaurants + workspace). Kolom `role` =
+-- user_role, tabel user_perms = user_permissions.
 CREATE TABLE IF NOT EXISTS users (
   id             TEXT PRIMARY KEY,
   restaurant_id  TEXT NOT NULL DEFAULT '',
   email          TEXT NOT NULL,
-  name           TEXT NOT NULL DEFAULT '',
-  role           TEXT NOT NULL DEFAULT 'owner',
+  name           TEXT NOT NULL DEFAULT '',       -- nama tampilan pribadi
+  role           TEXT NOT NULL DEFAULT 'owner',  -- user_role
   outlet_id      TEXT NOT NULL DEFAULT '',
-  avatar         TEXT NOT NULL DEFAULT '',
-  status         TEXT NOT NULL DEFAULT 'active',
+  avatar         TEXT NOT NULL DEFAULT '',       -- foto profil pribadi
+  phone          TEXT NOT NULL DEFAULT '',       -- telepon pribadi
+  theme          TEXT NOT NULL DEFAULT '',       -- preferensi tema pribadi ('' = ikut restoran)
+  status         TEXT NOT NULL DEFAULT 'active', -- active | inactive (suspended = legacy)
+  deactivated_at INTEGER NOT NULL DEFAULT 0,     -- waktu penonaktifkan terakhir
   created_at     INTEGER NOT NULL,
   last_login_at  INTEGER NOT NULL DEFAULT 0
 );
+
+-- Migrasi basis data yang sudah ada (jalankan bila kolom di atas belum ada;
+-- Worker juga melakukan ALTER TABLE otomatis saat start — lihat server/migrate.js):
+--   ALTER TABLE users ADD COLUMN phone TEXT NOT NULL DEFAULT '';
+--   ALTER TABLE users ADD COLUMN theme TEXT NOT NULL DEFAULT '';
+--   ALTER TABLE users ADD COLUMN deactivated_at INTEGER NOT NULL DEFAULT 0;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_rest ON users(restaurant_id);

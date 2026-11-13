@@ -15,6 +15,7 @@ import {
 } from './permissions.js';
 import { writeAudit } from './audit.js';
 import { deliverMail } from './mailer.js';
+import { ensureColumns } from './migrate.js';
 
 const DB = env => env.rasa_restaurant_os_db;
 
@@ -30,6 +31,8 @@ export const SESSION_TTL = 30 * 24 * 60 * 60 * 1000; /* 30 hari */
 export async function authContext(req, env) {
   const token = tokenFrom(req);
   if (!token || token.length < 20) return null;
+  /* pastikan kolom profil/status terbaru tersedia (migrasi sekali per isolasi) */
+  await ensureColumns(env);
   const hash = await sha256(token);
   const s = await DB(env).prepare('SELECT * FROM sessions WHERE token_hash = ?').bind(hash).first();
   if (!s) return null;
@@ -571,12 +574,36 @@ export async function me(req, env) {
 
 /* ============================================================
    Manajemen staf oleh owner / manager
+
+   Aturan proteksi akun Owner (dicek di server, bukan sekadar
+   disembunyikan di frontend):
+   - Tidak ada role (termasuk Manager dengan permission staf penuh)
+     yang boleh MENONAKTIFKAN akun Owner.
+   - Tidak ada role selain Owner yang boleh MENGUBAH ROLE / MENGHAPUS
+     akun Owner.
+   - Penonaktifkan mencabut SELURUH sesi aktif target sehingga akses
+     login hilang seketika; role & wewenang (user_perms) TIDAK dihapus
+     agar bisa dipulihkan saat akun diaktifkan kembali.
    ============================================================ */
+
+export const OWNER_DEACTIVATE_MSG = 'Anda Tidak Memiliki Wewenang untuk Menonaktifkan Akun Owner.';
+export const OWNER_ROLE_MSG = 'Anda Tidak Memiliki Wewenang untuk Mengubah Role Akun Owner.';
+export const OWNER_DELETE_MSG = 'Anda Tidak Memiliki Wewenang untuk Menghapus Akun Owner.';
+
+/* status kanonik: 'active' | 'inactive'; 'suspended' (legacy) = inactive */
+function normStatus(v) {
+  const s = String(v == null ? '' : v).trim().toLowerCase();
+  if (s === 'active') return 'active';
+  if (s === 'inactive' || s === 'suspended') return 'inactive';
+  return null;
+}
+
 export async function addStaff(req, env, a) {
   const body = await readJson(req);
   const email = normEmail(body.email);
   const name = clean(body.name, 60);
   const role = clean(body.role, 20);
+  const phone = clean(body.phone, 24);
   if (!email) return err('Format email tidak valid.', 400, { field: 'email' });
   if (!name) return err('Nama staf wajib diisi.', 400, { field: 'name' });
   if (!ROLES.some(r => r.id === role)) return err('Role tidak dikenal.', 400, { field: 'role' });
@@ -591,65 +618,175 @@ export async function addStaff(req, env, a) {
   const now = Date.now();
   const userId = rid('usr');
   await DB(env).prepare(
-    `INSERT INTO users (id,restaurant_id,email,name,role,outlet_id,avatar,status,created_at,last_login_at)
-     VALUES (?,?,?,?,?,?,'','active',?,0)`
-  ).bind(userId, a.user.restaurant_id, email, name, role, a.user.outlet_id || '', now).run();
+    `INSERT INTO users (id,restaurant_id,email,name,role,outlet_id,avatar,phone,theme,status,deactivated_at,created_at,last_login_at)
+     VALUES (?,?,?,?,?,?,'',?,'','active',0,?,0)`
+  ).bind(userId, a.user.restaurant_id, email, name, role, a.user.outlet_id || '', phone, now).run();
 
   const user = await DB(env).prepare('SELECT * FROM users WHERE id = ?').bind(userId).first();
-  await writeAudit(env, a.ctx, 'staff.create', 'user', { email: maskEmail(email), name, role, roleLabel: roleLabel(role) });
+  await writeAudit(env, a.ctx, 'staff.create', 'user', { id: userId, email: maskEmail(email), name, role, roleLabel: roleLabel(role) });
   return json({ ok: true, user: publicUser(user) });
 }
 
 export async function listStaff(req, env, a) {
   const rows = await DB(env)
-    .prepare('SELECT id,email,name,role,outlet_id,status,created_at,last_login_at FROM users WHERE restaurant_id = ? ORDER BY created_at ASC')
+    .prepare(
+      `SELECT id,email,name,role,outlet_id,status,avatar,phone,created_at,last_login_at,deactivated_at
+       FROM users WHERE restaurant_id = ? ORDER BY created_at ASC`
+    )
     .bind(a.user.restaurant_id).all();
-  return json({ ok: true, items: rows.results || [] });
+  const items = rows.results || [];
+  /* hitung tab Akun Aktif / Akun Nonaktif langsung dari database */
+  const active = items.filter(u => String(u.status || '') === 'active').length;
+  return json({
+    ok: true,
+    items,
+    counts: { active, inactive: items.length - active, total: items.length }
+  });
 }
 
 export async function updateStaff(req, env, a, id) {
   const body = await readJson(req);
   const target = await DB(env).prepare('SELECT * FROM users WHERE id = ? AND restaurant_id = ?').bind(id, a.user.restaurant_id).first();
-  if (!target) return err('Staf tidak ditemukan.', 404);
+  if (!target) return err('Staf tidak ditemukan.', 404);   /* lintas restoran: tidak bocor */
+
+  const actorIsOwner = a.user.role === 'owner';
+  const targetIsOwner = target.role === 'owner';
+  const isSelf = String(target.id) === String(a.user.id);
+  const now = Date.now();
+
   const role = clean(body.role, 20);
   const name = clean(body.name, 60);
-  const status = clean(body.status, 20);
+  const email = body.email !== undefined && String(body.email).trim() !== '' ? normEmail(body.email) : null;
+  const phone = body.phone !== undefined ? clean(body.phone, 24) : null;
+  let statusNext = null;
+  if (body.status !== undefined && body.status !== null && String(body.status) !== '') {
+    statusNext = normStatus(body.status);
+    if (!statusNext) return err('Status akun tidak dikenal.', 400, { field: 'status' });
+  }
+  if (body.role !== undefined && String(body.role).trim() !== '' && !ROLES.some(r => r.id === role)) {
+    return err('Role tidak dikenal.', 400, { field: 'role' });
+  }
+  if (email !== null && !email) return err('Format email tidak valid.', 400, { field: 'email' });
 
+  const changes = {};
+  let auditAction = '';
+  let nextRole = null, nextName = null, nextPhone = null, nextEmail = null, nextStatus = null;
+
+  /* --- 1. aktif / nonaktif --- */
+  if (statusNext) {
+    const cur = String(target.status || '') === 'active' ? 'active' : 'inactive';
+    if (statusNext !== cur) {
+      if (statusNext === 'inactive') {
+        if (isSelf) return err('Tidak bisa menonaktifkan akun sendiri.', 409, { field: 'status' });
+        if (targetIsOwner) return err(OWNER_DEACTIVATE_MSG, 403, { code: 'owner_protected', field: 'status' });
+      }
+      nextStatus = statusNext;
+      changes.status = statusNext;
+      auditAction = statusNext === 'inactive' ? 'staff.deactivate' : 'staff.activate';
+    }
+  }
+
+  /* --- 2. role (user_role) --- */
   if (role && ROLES.some(r => r.id === role) && role !== target.role) {
-    if (a.user.role !== 'owner') return err('Hanya owner yang boleh mengubah role.', 403);
-    if (target.role === 'owner' && target.id !== a.user.id) {
-      const owners = await DB(env).prepare('SELECT COUNT(*) AS c FROM users WHERE restaurant_id = ? AND role = ? AND status = ?')
-        .bind(a.user.restaurant_id, 'owner', 'active').first();
-      if ((owners && owners.c) <= 1) return err('Tidak bisa mengubah role owner terakhir.', 409);
+    if (isSelf) return err('Role akun Anda tidak dapat diubah sendiri.', 403, { field: 'role' });
+    if (targetIsOwner) {
+      /* perlindungan Owner: permission staf Manager tidak mengesampingkan aturan ini */
+      if (!actorIsOwner) return err(OWNER_ROLE_MSG, 403, { code: 'owner_protected', field: 'role' });
+      const owners = await DB(env).prepare(
+        'SELECT COUNT(*) AS c FROM users WHERE restaurant_id = ? AND role = ? AND status = ?'
+      ).bind(a.user.restaurant_id, 'owner', 'active').first();
+      if ((owners && owners.c) <= 1) return err('Tidak bisa mengubah role owner terakhir.', 409, { field: 'role' });
     }
-    await DB(env).prepare('UPDATE users SET role = ? WHERE id = ?').bind(role, id).run();
+    if (role === 'owner' && !actorIsOwner) return err('Hanya Owner yang boleh menetapkan role Owner.', 403, { field: 'role' });
+    nextRole = role;
+    changes.role = role;
+    if (!auditAction) auditAction = 'staff.role';
   }
-  if (name) await DB(env).prepare('UPDATE users SET name = ? WHERE id = ?').bind(name, id).run();
-  if (status === 'active' || status === 'suspended') {
-    if (target.id === a.user.id && status === 'suspended') return err('Tidak bisa menonaktifkan akun sendiri.', 409);
-    await DB(env).prepare('UPDATE users SET status = ? WHERE id = ?').bind(status, id).run();
-    if (status === 'suspended') {
-      await DB(env).prepare('UPDATE sessions SET revoked_at = ? WHERE user_id = ?').bind(Date.now(), id).run();
+
+  /* --- 3. nama tampilan pribadi --- */
+  if (name && name !== target.name) {
+    nextName = name;
+    changes.name = name;
+    if (!auditAction) auditAction = 'staff.update';
+  }
+
+  /* --- 4. telepon pribadi --- */
+  if (phone !== null && phone !== String(target.phone || '')) {
+    nextPhone = phone;
+    changes.phone = 'updated';
+    if (!auditAction) auditAction = 'staff.update';
+  }
+
+  /* --- 5. email: hanya Owner, tidak untuk akun sendiri, unik per restoran --- */
+  if (email !== null && email !== String(target.email || '').toLowerCase()) {
+    if (!actorIsOwner) return err('Perubahan email hanya dapat dilakukan oleh Owner.', 403, { field: 'email' });
+    if (isSelf) return err('Email akun Anda sendiri tidak dapat diubah lewat halaman staf.', 403, { field: 'email' });
+    const dup = await DB(env).prepare('SELECT id,restaurant_id FROM users WHERE email = ?').bind(email).first();
+    if (dup && String(dup.id) !== String(target.id)) {
+      if (dup.restaurant_id === a.user.restaurant_id) return err('Email ini sudah terdaftar di restoran Anda.', 409, { field: 'email' });
+      return err('Email sudah dipakai akun lain.', 409, { field: 'email' });
+    }
+    nextEmail = email;
+    changes.email = 'updated';
+    if (!auditAction) auditAction = 'staff.update';
+  }
+
+  if (!Object.keys(changes).length) {
+    const current = await DB(env).prepare('SELECT * FROM users WHERE id = ?').bind(id).first();
+    return json({ ok: true, user: publicUser(current), changes: {} });
+  }
+
+  /* --- terapkan (divalidasi semua di atas terlebih dahulu) --- */
+  if (nextRole !== null) await DB(env).prepare('UPDATE users SET role = ? WHERE id = ? AND restaurant_id = ?').bind(nextRole, id, a.user.restaurant_id).run();
+  if (nextName !== null) await DB(env).prepare('UPDATE users SET name = ? WHERE id = ? AND restaurant_id = ?').bind(nextName, id, a.user.restaurant_id).run();
+  if (nextPhone !== null) await DB(env).prepare('UPDATE users SET phone = ? WHERE id = ? AND restaurant_id = ?').bind(nextPhone, id, a.user.restaurant_id).run();
+  if (nextEmail !== null) {
+    await DB(env).prepare('UPDATE users SET email = ? WHERE id = ? AND restaurant_id = ?').bind(nextEmail, id, a.user.restaurant_id).run();
+    /* perubahan identitas masuk → cabut sesi lama, wajib login dengan email baru */
+    await DB(env).prepare('UPDATE sessions SET revoked_at = ? WHERE user_id = ?').bind(now, id).run();
+  }
+  if (nextStatus !== null) {
+    await DB(env).prepare('UPDATE users SET status = ?, deactivated_at = ? WHERE id = ? AND restaurant_id = ?')
+      .bind(nextStatus, nextStatus === 'inactive' ? now : 0, id, a.user.restaurant_id).run();
+    if (nextStatus === 'inactive') {
+      /* seluruh sesi aktif dicabut -> akses login hilang seketika */
+      await DB(env).prepare('UPDATE sessions SET revoked_at = ? WHERE user_id = ?').bind(now, id).run();
     }
   }
-  const user = await DB(env).prepare('SELECT id,email,name,role,outlet_id,status,created_at,last_login_at FROM users WHERE id = ?').bind(id).first();
-  await writeAudit(env, a.ctx, 'staff.update', 'user', { id, role: user.role, status: user.status, name: user.name });
-  return json({ ok: true, user });
+
+  const user = await DB(env)
+    .prepare('SELECT id,email,name,role,outlet_id,status,avatar,phone,theme,created_at,last_login_at,deactivated_at FROM users WHERE id = ?')
+    .bind(id).first();
+  await writeAudit(env, a.ctx, auditAction || 'staff.update', 'user', {
+    id, name: user.name, role: user.role, status: user.status, changes,
+    targetEmail: maskEmail(target.email)
+  });
+  return json({ ok: true, user: publicUser(user), changes });
 }
 
 export async function removeStaff(req, env, a, id) {
-  if (id === a.user.id) return err('Tidak bisa menghapus akun sendiri.', 409);
+  if (String(id) === String(a.user.id)) return err('Tidak bisa menghapus akun sendiri.', 409);
   const target = await DB(env).prepare('SELECT * FROM users WHERE id = ? AND restaurant_id = ?').bind(id, a.user.restaurant_id).first();
   if (!target) return err('Staf tidak ditemukan.', 404);
-  if (target.role === 'owner' && a.user.role !== 'owner') return err('Hanya owner yang boleh menghapus owner.', 403);
   if (target.role === 'owner') {
-    const owners = await DB(env).prepare('SELECT COUNT(*) AS c FROM users WHERE restaurant_id = ? AND role = ? AND status = ?')
-      .bind(a.user.restaurant_id, 'owner', 'active').first();
+    if (a.user.role !== 'owner') return err(OWNER_DELETE_MSG, 403, { code: 'owner_protected' });
+    const owners = await DB(env).prepare(
+      'SELECT COUNT(*) AS c FROM users WHERE restaurant_id = ? AND role = ? AND status = ?'
+    ).bind(a.user.restaurant_id, 'owner', 'active').first();
     if ((owners && owners.c) <= 1) return err('Tidak bisa menghapus owner terakhir.', 409);
   }
+  /* hapus permanen = kebijakan Owner (data operasional restoran tetap utuh) */
+  if (a.user.role !== 'owner') return err('Hanya Owner yang boleh menghapus akun secara permanen.', 403);
   await DB(env).prepare('UPDATE sessions SET revoked_at = ? WHERE user_id = ?').bind(Date.now(), id).run();
-  await DB(env).prepare('DELETE FROM users WHERE id = ?').bind(id).run();
-  await writeAudit(env, a.ctx, 'staff.delete', 'user', { id, email: maskEmail(target.email), role: target.role });
+  /* wewenang khusus staf ikut dibersihkan; riwayat audit log tetap dipertahankan */
+  try {
+    await DB(env).prepare('DELETE FROM user_perms WHERE restaurant_id = ? AND user_id = ?')
+      .bind(a.user.restaurant_id, id).run();
+  } catch (e) { console.log('user-perms-cleanup-failed', String(e && e.message)); }
+  await DB(env).prepare('DELETE FROM users WHERE id = ? AND restaurant_id = ?').bind(id, a.user.restaurant_id).run();
+  await writeAudit(env, a.ctx, 'staff.delete', 'user', {
+    id, email: maskEmail(target.email), role: target.role, name: target.name || ''
+  });
   return json({ ok: true });
 }
 
@@ -814,9 +951,11 @@ function safeList(raw) {
 export function publicUser(u) {
   if (!u) return null;
   return {
-    id: u.id, email: u.email, name: u.name, role: u.role,
+    id: u.id, email: u.email, name: u.name, role: u.role, roleLabel: roleLabel(u.role),
     restaurantId: u.restaurant_id, outletId: u.outlet_id, avatar: u.avatar,
-    status: u.status, createdAt: u.created_at, lastLoginAt: u.last_login_at
+    phone: u.phone || '', theme: u.theme || '',
+    status: u.status, deactivatedAt: u.deactivated_at || 0,
+    createdAt: u.created_at, lastLoginAt: u.last_login_at
   };
 }
 

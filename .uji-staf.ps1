@@ -58,8 +58,10 @@ if ($dom -match 'Staf &amp; role') { Ok 'panel Staf & role tampil' } else { Fail
 foreach ($k in @('Nonaktifkan','Wewenang','Hapus')) {
   if ($dom.Contains($k)) { Ok ("tombol " + $k + " tampil") } else { Fail ("tombol " + $k + " tidak tampil") }
 }
-if ($dom.Contains('Tambah staf')) { Fail 'form Tambah staf masih tampil (seharusnya sudah dihapus)' } else { Ok 'form Tambah staf sudah dihapus — penambahan staf lewat undangan Gmail' }
-if ($dom.Contains('staff-form-toggle') -or $dom.Contains('staff-add')) { Fail 'aksi staff-add/staff-form-toggle masih ada di DOM' } else { Ok 'aksi staff-add/staff-form-toggle tidak ada' }
+# 2026: panel Staf & Role kembali menyediakan tombol "Tambah staf" (selain undangan email)
+if ($dom.Contains('Tambah staf')) { Ok 'tombol Tambah staf tampil' } else { Fail 'tombol Tambah staf tidak tampil' }
+if ($dom.Contains('staff-add')) { Ok 'aksi staff-add tersedia di DOM' } else { Fail 'aksi staff-add tidak ada di DOM' }
+if ($dom.Contains('staff-form-toggle')) { Fail 'aksi lama staff-form-toggle masih ada' } else { Ok 'aksi lama staff-form-toggle sudah tidak dipakai' }
 
 # ukur warna terhitung tiap tombol staf (harus latar solid + tulisan berlawanan)
 $probe = @'

@@ -5,7 +5,7 @@
    ============================================================ */
 
 import { json, err, readJson, clean, MAX_PAYLOAD } from './lib.js';
-import { can, moduleOfKey } from './permissions.js';
+import { can, moduleOfKey, RESTAURANT_IDENTITY_KEYS } from './permissions.js';
 import { requireAuth } from './auth.js';
 import { writeAudit } from './audit.js';
 
@@ -115,7 +115,8 @@ function validateValue(key, v) {
   /* key pengaturan berbentuk skalar wajib string dengan batas wajar */
   const SCALAR = {
     restaurantName: 60, restaurantLocation: 80, brandName: 60, ownerName: 60,
-    ownerRole: 40, lat: 20, lng: 20, theme: 30
+    ownerRole: 40, lat: 20, lng: 20, theme: 30,
+    restoAddress: 90, restoPhone: 24, restoEmail: 60, restoWebsite: 60, restoSocial: 60
   };
   if (Object.prototype.hasOwnProperty.call(SCALAR, key)) {
     if (v == null) return null;
@@ -185,6 +186,16 @@ export async function putData(req, env) {
     if (same) { unchanged.push(key); continue; }
     const problem = nextVal === undefined ? null : validateValue(key, nextVal);
     if (problem) { invalid.push({ key, reason: problem }); continue; }
+
+    /* --- PROTEKSI IDENTITAS RESTORAN ---
+       Key identitas restoran (logo, nama pemilik, nama restoran, kontak,
+       tampilan/warna, lokasi) hanya boleh ditulis oleh Owner — berlaku
+       MESKIPUN role tersebut punya permission settings:update penuh.
+       Permintaan non-owner ditolak dan dicatat ke audit log. */
+    if (RESTAURANT_IDENTITY_KEYS.indexOf(key) >= 0 && a.user.role !== 'owner') {
+      denied.push({ key, module: mod, reason: 'owner_only' });
+      continue;
+    }
     /* Workspace "Antar Ke Meja" (modul 'antar') juga menulis key pesanan:
        Acc & antar / Sampai di meja cukup berwewenang antar — modul 'orders'
        tetap yang utama; keduanya berlaku sebagai izin alternatif.
@@ -220,15 +231,15 @@ export async function putData(req, env) {
     await writeAudit(env, a.ctx, denied.length ? 'data.update.partial' : 'data.update', 'workspace', {
       rev,
       applied: applied.map(k => moduleOfKey(k) + ':' + k).slice(0, 40),
-      denied: denied.map(d => d.module + ':' + d.key).slice(0, 20),
+      denied: denied.map(d => d.module + ':' + d.key + (d.reason ? '(' + d.reason + ')' : '')).slice(0, 20),
       invalid: invalid.map(x => x.key).slice(0, 20),
       bytes: JSON.stringify(merged).length
     });
   }
 
   if (denied.length) {
-    await writeAudit(env, a.ctx, 'permission.denied', 'workspace', {
-      denied: denied.map(d => d.module + ':' + d.key).slice(0, 20)
+    await writeAudit(env, a.ctx, denied.some(d => d.reason === 'owner_only') ? 'permission.denied.owner' : 'permission.denied', 'workspace', {
+      denied: denied.map(d => d.module + ':' + d.key + (d.reason ? '(' + d.reason + ')' : '')).slice(0, 20)
     });
   }
   if (invalid.length) {

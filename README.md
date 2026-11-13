@@ -101,7 +101,7 @@ Izin yang sama tetap ditegakkan di backend (`server/permissions.js` + pemeriksaa
 
 ## Undangan staf lewat email (Gmail)
 
-Owner (dan manager dengan izin **Staf**) bisa mengundang calon staf lewat **alamat Gmail** tanpa membuat akun lebih dulu. Undangan disimpan di tabel `staff_invitations` berstatus `pending`, `accepted`, atau `rejected`. **Undangan inilah satu-satunya cara menambah staf** — panel **Staf & role** tidak lagi memuat form *Tambah staf* (penomboran API `POST /api/staf` tetap tersedia untuk kompatibilitas, tetapi tidak ditampilkan di UI).
+Owner (dan manager dengan izin **Staf**) bisa mengundang calon staf lewat **alamat Gmail** tanpa membuat akun lebih dulu. Undangan disimpan di tabel `staff_invitations` berstatus `pending`, `accepted`, atau `rejected`. Selain undangan, panel **Staf & role** juga menyediakan tombol **Tambah staf** (penambahan langsung lewat `POST /api/staf`) untuk akun yang sudah punya email.
 
 **Alur lengkap:**
 
@@ -123,6 +123,24 @@ Owner (dan manager dengan izin **Staf**) bisa mengundang calon staf lewat **alam
 - Seluruh alur (`staff.invite.create/accept/reject/revoke/denied`) tercatat di **audit log**.
 
 **Endpoint baru:** `POST /api/invitations`, `GET /api/invitations`, `DELETE /api/invitations/:id`, `GET /api/invitations/mine`, `POST /api/invitations/:id/accept`, `POST /api/invitations/:id/reject`.
+
+## Identitas restoran vs profil pribadi (Owner-only)
+
+Panel **Pengaturan** kini memisahkan dua hal yang dulu tercampur:
+
+- **Identitas restoran** — logo, nama pemilik, nama restoran, identitas, kontak & media sosial, tema/tampilan, lokasi & Google Maps. **Hanya Owner** yang boleh mengubah; semua role lain melihatnya **read-only** (kolom disabled, tanpa tombol ganti foto/GPS/tempel peta, kartu tema terkunci, catatan “hanya Owner” + label `🔒 Owner only`). Penolakan tidak hanya di UI: `PUT /api/data` menolak key identitas (daftar `RESTAURANT_IDENTITY_KEYS` di `server/permissions.js`) untuk sesi non-Owner dengan alasan `owner_only`, dan `PUT /api/profile` menolak field identitas (`403`). Bila Owner mencoba menulis identitas dari sesi non-Owner di frontend, toast muncul persis: **“Identitas restoran hanya dapat diubah oleh Owner.”**
+- **Profil pribadi** (panel **Profil pribadi Anda**) — foto profil, nama tampilan, telepon, tema pribadi, dan keamanan (keluar dari semua perangkat). **Hanya pemilik sesi** yang bisa mengubah; perubahan foto/nama **tidak menyentuh** identitas restoran maupun staf lain. Role, izin, dan email **tidak bisa diedit sendiri** (email hanya lewat kebijakan Owner; role hanya lewat Owner di panel staf). Tersimpan di tabel `users` per `user_id` + `restaurant_id` (endpoint `GET/PUT /api/profile`, `POST /api/auth/logout-all`).
+
+**Proteksi akun Owner** ditegakkan di 4 lapis (frontend, backend, API, DB): baris Owner tidak pernah menampilkan tombol Nonaktifkan/Hapus/Wewenang bagi siapa pun selain Owner, dan percobaan non-Owner (termasuk Manager dengan permission staf penuh) selalu ditolak dengan pesan persis **“Anda Tidak Memiliki Wewenang untuk Menonaktifkan Akun Owner.”** (paralel: pesan untuk mengubah role & menghapus akun Owner). Perubahan role/permission selalu divalidasi server.
+
+## Staf & role: Akun Aktif / Akun Nonaktif
+
+Panel **Staf & role** memakai dua tab dengan hitungan langsung dari database: **Akun Aktif** (tambah, ubah, ganti role, atur wewenang, nonaktifkan) dan **Akun Nonaktif** (nama, email, role terakhir, tanggal penonaktifkan, **Aktifkan** kembali, dan **Hapus permanen** — hanya Owner). Pencarian nama/email dan filter role berlaku di kedua tab.
+
+- **Nonaktifkan** → status `inactive`, **semua sesi dicabut seketika** (login langsung hilang, token lama `401`), akun pindah ke tab Nonaktif, login ulang ditolak `403`, email tidak boleh diduplikat di restoran yang sama, dan **data operasional tetap utuh**. Waktu penonaktifan tersimpan di `users.deactivated_at`.
+- **Aktifkan kembali** → role & wewenang pulih persis seperti sebelumnya (baris `user_perms` tidak pernah dihapus), sesi bisa login lagi, hitungan tab kembali.
+- **Hapus permanen** → hanya Owner; membersihkan `user_perms` tetapi **riwayat audit log tetap ada**.
+- Seluruh alur (`staff.create`, `staff.update`, `staff.deactivate`, `staff.activate`, `staff.delete`) tercatat di **audit log**. Status kanonik `active` | `inactive` (`suspended` legacy diperlakukan inactive).
 
 ## Alur penyajian: dapur → antar ke meja
 
@@ -174,6 +192,8 @@ Struk pembayaran untuk pelanggan, dibuka lewat modul `core/receipt.js` — **sat
 
 ```bat
 :: sekali saja bila skema database berubah (mis. menambah tabel user_perms / staff_invitations)
+:: kolom baru pada tabel users (phone/theme/deactivated_at) TIDAK perlu langkah ini:
+:: server/migrate.js menambahkannya otomatis saat sesi dibuka (ALTER TABLE sekali per isolasi)
 npx.cmd wrangler d1 execute rasa-restaurant-os-db --remote --file=server\schema.sql
 
 :: WAJIB agar kode OTP login bisa dikirim ke email (tanpa ini permintaan OTP
@@ -248,7 +268,7 @@ Enam skrip pengujian dijalankan terhadap `wrangler dev --port 8790 --local` (D1 
 - `.uji-permisi.ps1` — 13 skenario API permission: cabut/kembalikan wewenang per staf (tanpa menyentuh staf lain), validasi ketat modul & aksi, data tetap utuh, tulis & API permission ditolak, preset per role berlaku langsung, serta modul **Antar Ke Meja** (dipilih di Wewenang) sebagai izin alternatif menulis pesanan.
 - `.uji-frontend.ps1` — uji headless Chrome: DOM badge status jadwal, foto `object-fit: contain`, menu/halaman ditolak saat wewenang dicabut, notifikasi pencabutan langsung saat halaman terbuka (poll izin 20 detik), serta data tetap terkirim ke staf yang dicabut.
 - `.uji-kontras.ps1` — mengukur rasio kontras label tombol terhadap latarnya di 6 tema (66 pemeriksaan = 6 tema x 11 jenis tombol, ambang WCAG AA 4.5:1) sekaligus memastikan tulisan tombol selalu berlawanan dengan warna latarnya.
-- `.uji-staf.ps1` — uji headless Chrome dengan sesi login sungguhan: panel Staf &amp; role tampil lengkap (Nonaktifkan, Wewenang, Hapus) dan form **Tambah staf** sudah dihapus (penambahan staf hanya lewat undangan Gmail), warna keempat tombol staf diukur di 6 tema (24 pemeriksaan, ambang 4.5:1), serta modal **Wewenang** benar-benar terbuka dan memuat centang **Antar Ke Meja** sesuai preset role.
+- `.uji-staf.ps1` — uji headless Chrome dengan sesi login sungguhan: panel Staf &amp; role tampil lengkap (Nonaktifkan, Wewenang, Hapus, Tambah staf), warna keempat tombol staf diukur di 6 tema (24 pemeriksaan, ambang 4.5:1), serta modal **Wewenang** benar-benar terbuka dan memuat centang **Antar Ke Meja** sesuai preset role.
 - `.uji-undangan.ps1` — 25+ pemeriksaan alur **undangan staf via Gmail**: undangan dibuat `pending` dengan peran benar, validasi email/role/duplikat, undangan orang lain tidak bocor di `/mine`, notifikasi tampil setelah calon staf mendaftar dengan email yang diundang, pemilik lain ditolak (403), **Terima** menjadikan staf aktif dengan izin role waiter, **Tolak** tanpa keanggotaan, proses ganda ditolak (409), pembatalan oleh owner, dan seluruh alur tercatat di audit log.
 - `.uji-pesanan-staf.ps1` — 25 pemeriksaan **pemesanan menu oleh staf** (API + headless Chrome): preset `kasir` (`orders:update`, `pos:create`, `reservations:update`, `menu` read-only), Kasir memesan produk **bervarian** dari Menu aktif — pilih varian Large → keranjang → bayar — tanpa satu pun toast “tidak punya izin” (dulu seluruh produk bervarian terblokir), struk memakai harga varian, pesanan tercatat di server dan terlihat oleh Owner, tombol mati (Tambah menu, ✎, Kosongkan) tersembunyi, serta uji negatif: staf tanpa izin Pesanan/Antar ditolak di depan dengan pesan jelas.
 

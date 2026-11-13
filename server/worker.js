@@ -12,6 +12,7 @@ import {
 import { getData, putData, rotateInvite } from './data.js';
 import { listAudit, writeAudit } from './audit.js';
 import { createInvite, listInvites, revokeInvite, myInvites, respondInvite } from './invites.js';
+import { getProfile, updateProfile, logoutAllSessions } from './profile.js';
 
 const CORS = {
   'access-control-allow-origin': '*',
@@ -31,7 +32,12 @@ async function route(req, env, url) {
   if (key === 'POST /api/auth/resend') return withCors(await requestOtp(req, env));
   if (key === 'POST /api/auth/verify') return withCors(await verifyOtp(req, env));
   if (key === 'POST /api/auth/logout') return withCors(await logout(req, env));
+  if (key === 'POST /api/auth/logout-all') return withCors(await logoutAllSessions(req, env));
   if (key === 'GET /api/auth/me') return withCors(await me(req, env));
+
+  /* --- profil pribadi pengguna (terpisah dari identitas restoran) --- */
+  if (key === 'GET /api/profile') return withCors(await getProfile(req, env));
+  if (key === 'PUT /api/profile') return withCors(await updateProfile(req, env));
 
   /* --- sinkronisasi data --- */
   if (key === 'GET /api/data') return withCors(await getData(req, env));

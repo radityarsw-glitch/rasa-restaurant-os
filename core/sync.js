@@ -21,9 +21,20 @@ window.RasaSync = (function () {
   const SYNC_KEYS = [
     'restaurantName', 'restaurantLocation', 'brandName', 'ownerName', 'ownerRole',
     'avatar', 'lat', 'lng', 'accounts', 'theme', 'isOpen',
+    'restoAddress', 'restoPhone', 'restoEmail', 'restoWebsite', 'restoSocial',
     'orders', 'archive', 'products', 'reservations',
     'inventory', 'recipes', 'stockLog', 'accounting'
   ];
+
+  /* Key identitas restoran hanya ditulis oleh sesi Owner — sisanya tidak
+     ikut didorong supaya server tidak perlu menolak (tetap dicek ulang di server). */
+  function isOwnerSession() {
+    const s = window.RasaSession || {};
+    return !s.user || s.user.role === 'owner';
+  }
+  function identityKey(k) {
+    return !!(window.RasaIdentityKeys && window.RasaIdentityKeys.indexOf(k) >= 0);
+  }
 
   let snap = { rev: 0, payload: {}, init: false };
   let enabled = false;
@@ -236,6 +247,7 @@ window.RasaSync = (function () {
        Ke Meja) ikut menulis key pesanan, jadi ikut diperbolehkan di sini. */
     const changed = diffKeys(snap.payload, local).filter(k => {
       if (!window.RasaKeyModule || !window.canPerm) return true;
+      if (identityKey(k) && !isOwnerSession()) return false;   /* identitas restoran = Owner */
       const m = window.RasaKeyModule(k);
       if (m === 'misc') return true;
       if (window.canPerm(m, 'update')) return true;
@@ -260,8 +272,15 @@ window.RasaSync = (function () {
         toast('Data tidak valid ditolak server: ' + invalid.map(x => x.key + ' (' + (x.reason || 'tidak valid') + ')').join(', '));
       }
       if (denied.length) {
-        const mods = denied.map(d => d.module).filter((v, i, a) => a.indexOf(v) === i);
-        toast('Perubahan pada ' + mods.join(', ') + ' ditolak — tidak sesuai izin role Anda.');
+        const ownerOnly = denied.filter(d => d.reason === 'owner_only');
+        const other = denied.filter(d => d.reason !== 'owner_only');
+        if (ownerOnly.length) {
+          toast('Identitas restoran hanya dapat diubah oleh Owner.');
+        }
+        if (other.length) {
+          const mods = other.map(d => d.module).filter((v, i, a) => a.indexOf(v) === i);
+          toast('Perubahan pada ' + mods.join(', ') + ' ditolak — tidak sesuai izin role Anda.');
+        }
         const localNow = localPayload();
         suspend = true;
         try {
