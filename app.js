@@ -2804,6 +2804,7 @@ function render(page='overview',keepScroll){
   wrapTables(pc);
   document.getElementById('crumb').textContent=pageNames[page]||'Ringkasan';
   document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.page===page));
+  syncTabActive();
   closeSidebar();
   applyIdentity();
   if(page==='menu')filterMenuDom();   /* terapkan kata kunci POS yang tersimpan */
@@ -2817,6 +2818,21 @@ function render(page='overview',keepScroll){
 function closeSidebar(){
   const sb=document.getElementById('sidebar');if(sb)sb.classList.remove('open');
   const bd=document.getElementById('sidebarBackdrop');if(bd)bd.classList.remove('show');
+}
+/* Bilah tab bawah (mobile) selalu menunjukkan SATU tab yang aktif:
+   - halaman yang punya tab sendiri → tab itu (sudah diatur render());
+   - halaman lain (Reservasi, Persediaan, Pengaturan, …) → tab "Lainnya";
+   - layar izin/ditolak → tab Ringkasan (halaman penggantinya Ringkasan).
+   Tanpa ini bilah tab bisa terlihat "tidak sinkron" karena tidak ada
+   satupun tab yang menyala, terutama setelah wewenang staf dicabut. */
+function syncTabActive(){
+  const tb=document.getElementById('tabbar');if(!tb)return;
+  const vis=Array.prototype.filter.call(tb.querySelectorAll('.nav-item'),b=>!b.hidden&&getComputedStyle(b).display!=='none');
+  if(!vis.length)return;
+  if(vis.some(b=>b.classList.contains('active')))return;
+  vis.forEach(b=>b.classList.remove('active'));
+  const fb=vis.find(b=>b.dataset.action==='open-sidebar')||vis.find(b=>b.dataset.page==='overview');
+  if(fb)fb.classList.add('active');
 }
 function openSidebar(){
   const sb=document.getElementById('sidebar');if(!sb)return;

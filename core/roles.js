@@ -105,6 +105,9 @@ window.RasaRoles = (function () {
       lbl.hidden = !any;
       lbl.style.display = any ? '' : 'none';
     });
+    /* bilah tab bawah ikut disinkronkan setelah izin berubah — tab aktif
+       tidak boleh hilang hanya karena satu tab disembunyikan */
+    if (typeof syncTabActive === 'function') syncTabActive();
   }
 
   function injectNav() {
@@ -165,8 +168,38 @@ window.RasaRoles = (function () {
   }
 
   function dashKitchen() {
-    /* Kitchen selalu masuk ke papan KDS — tugas utama role ini. */
-    return kitchenPage();
+    /* Ringkasan Dapur (halaman overview) — IKHTISAR antrean, bukan papan KDS.
+       Papan KDS tetap menjadi halaman tersendiri lewat menu/tab "Dapur".
+       Sebelumnya halaman Ringkasan langsung menampilkan kitchenPage(), sehingga
+       staf dapur yang membuka Ringkasan (di HP lain pun) justru melihat papan
+       KDS — menu Ringkasan terasa "tidak tersambung" dan operasi jadi membingungkan. */
+    const incoming = orders.filter(o => o.cls === 'paid').length;
+    const prep = orders.filter(o => o.cls === 'preparing').length;
+    const ready = orders.filter(o => o.cls === 'ready').length;
+    const sched = orders.filter(o => o.cls === 'scheduled').length;
+    const queue = orders.filter(o => o.cls === 'scheduled' || o.cls === 'paid' || o.cls === 'preparing');
+    const queueRows = queue.length
+      ? queue.slice(0, 8).map(o => `<tr><td>${esc(String(o.id))}<span class="subcell">${esc(o.guest || 'Walk-in')}</span></td>
+        <td>${esc(o.items || '')}</td><td class="method">${esc(o.type || '')}</td>
+        <td><span class="status ${o.cls}">${esc(o.status || '')}</span></td>
+        <td>${esc(o.resTime || o.time || '')}</td></tr>`).join('')
+      : '<tr><td colspan="5" class="empty-state">Belum ada antrean dapur — semua pesanan sudah diproses.</td></tr>';
+    return `${roleHeading('Ringkasan Dapur', 'Antrean masak, jadwal reservasi, dan pesanan siap disajikan hari ini — buka Kitchen Display untuk memproses tiket satu per satu.')}
+    <div class="stats-grid">
+      ${stat('Baru masuk', String(incoming), 'menunggu mulai dimasak', '▤', incoming ? 'prioritas segera' : 'antrean kosong')}
+      ${stat('Sedang dimasak', String(prep), 'di dapur sekarang', '♨', prep ? prep + ' tiket aktif' : 'lancar')}
+      ${stat('Siap disajikan', String(ready), 'menunggu pelayan ambil', '✓', ready ? 'segera diantar' : 'belum ada')}
+      ${stat('Terjadwal', String(sched), 'pesanan reservasi', '▦', sched ? 'periksa jadwal' : 'tidak ada')}
+    </div>
+    <div class="quick-row">
+      <button class="btn btn-primary" data-page="kitchen">♨ Buka Kitchen Display</button>
+      <button class="btn" data-page="orders">▤ Pesanan</button>
+      <button class="btn" data-page="pelayan">▣ Antar ke meja</button>
+      <button class="btn" data-action="refresh-dash">↻ Segarkan</button>
+    </div>
+    <div class="panel orders-panel"><div class="panel-head"><div><div class="panel-title">Antrean dapur</div><div class="panel-caption">Pesanan yang belum selesai diproses · terbaru di atas</div></div><button class="link-btn" data-page="kitchen">Buka KDS →</button></div>
+      <div class="table-wrap"><table><thead><tr><th>ID Pesanan</th><th>Item</th><th>Channel</th><th>Status</th><th>Waktu</th></tr></thead><tbody>${queueRows}</tbody></table></div></div>
+    ${orderTable(orders)}`;
   }
 
   function dashWaiter() {
@@ -513,7 +546,9 @@ window.RasaRoles = (function () {
       '</div></div>';
     const c = $('crumb');
     if (c) c.textContent = known ? 'Akses ditolak' : 'Tidak ditemukan';
-    document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+    /* Layar izin menggantikan halaman Ringkasan, jadi menu + tab Ringkasan
+       yang disorot — bilah tab bawah tidak pernah kehilangan tab aktifnya. */
+    document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.page === 'overview'));
   }
 
   function wrapRender() {
