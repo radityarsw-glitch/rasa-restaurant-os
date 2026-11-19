@@ -634,7 +634,9 @@ export async function listStaff(req, env, a) {
        FROM users WHERE restaurant_id = ? ORDER BY created_at ASC`
     )
     .bind(a.user.restaurant_id).all();
-  const items = rows.results || [];
+  /* baris DB (snake_case) dipetakan ke bentuk publik (camelCase) supaya
+     UI membaca lastLoginAt / deactivatedAt dengan benar */
+  const items = (rows.results || []).map(publicUser);
   /* hitung tab Akun Aktif / Akun Nonaktif langsung dari database */
   const active = items.filter(u => String(u.status || '') === 'active').length;
   return json({

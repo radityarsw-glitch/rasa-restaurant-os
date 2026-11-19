@@ -454,6 +454,16 @@ window.RasaRoles = (function () {
       const base = Array.isArray(roleMatrix[id]) ? roleMatrix[id].slice() : [];
       out[id] = (ov && Object.prototype.hasOwnProperty.call(ov, id)) ? (Array.isArray(ov[id]) ? ov[id].slice() : []) : base;
     });
+    return withAlwaysOpen(out);
+  }
+
+  /* Modul yang SELALU terbuka untuk semua staf (Pengaturan) — server memakai
+     aturan yang sama, jadi wewenang ini tidak bisa dicabut dari siapa pun. */
+  function withAlwaysOpen(perms) {
+    const out = Object.assign({}, perms || {});
+    const cur = Array.isArray(out.settings) ? out.settings.slice() : [];
+    if (cur.indexOf('read') < 0) cur.unshift('read');
+    out.settings = cur;
     return out;
   }
 
@@ -470,7 +480,8 @@ window.RasaRoles = (function () {
     const eff = staffEffective(u);
     const rows = MODULE_LABELS.map(([mod, label]) => {
       const on = Array.isArray(eff[mod]) && eff[mod].indexOf('read') >= 0;
-      const locked = mod === 'overview';
+      /* Ringkasan & Pengaturan selalu terbuka untuk semua staf (tidak bisa dicabut) */
+      const locked = mod === 'overview' || mod === 'settings';
       return `<label class="uperm-row${locked ? ' locked' : ''}">
         <input type="checkbox" data-uperm="${mod}"${on ? ' checked' : ''}${locked ? ' disabled' : ''}>
         <span class="uperm-text"><b>${esc(label)}</b><small>${esc(mod)}${locked ? ' · selalu terbuka' : ''}</small></span></label>`;
@@ -495,6 +506,13 @@ window.RasaRoles = (function () {
       if (!cb) return;
       if (mod === 'overview') { eff[mod] = ['read', 'export']; return; }
       const roleRow = (state.matrix[u.role] && state.matrix[u.role][mod]) || [];
+      if (mod === 'settings') {
+        /* Pengaturan selalu terbuka — preset role dipertahankan + read wajib */
+        const forced = roleRow.slice();
+        if (forced.indexOf('read') < 0) forced.unshift('read');
+        eff[mod] = forced;
+        return;
+      }
       eff[mod] = cb.checked ? (roleRow.length ? roleRow.slice() : ['read']) : [];
     });
     try {

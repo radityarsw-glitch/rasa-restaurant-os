@@ -2654,12 +2654,11 @@ function sessionUser(){return (window.RasaSession&&window.RasaSession.user)||nul
 function ownerEdit(){const u=sessionUser();return !u||u.role==='owner'}
 const ROLE_NAMES={owner:'Owner',manager:'Manager',kasir:'Kasir',kitchen:'Kitchen',waiter:'Waiter'};
 function roleName(id){return ROLE_NAMES[id]||String(id||'')}
-function personalThemeId(){const u=sessionUser();return (u&&u.theme)||''}
 /* ---------- Halaman pengaturan ---------- */
 function applyTheme(){
-  /* tema pribadi (per akun) mengalahkan tema restoran — tampilan restoran
-     tetap ditentukan Owner dan tidak berubah bagi akun lain */
-  const cands=[personalThemeId(),store.theme,'espresso'];
+  /* TEMA TAMPILAN PRIBADI SUDAH DIHAPUS: semua akun (termasuk staf)
+     selalu mengikuti tema restoran yang dipilih Owner. */
+  const cands=[store.theme,'espresso'];
   const t=cands.find(x=>THEMES.some(y=>y.id===x))||'espresso';
   const el=(typeof document!=='undefined')&&document.documentElement;
   if(el&&el.setAttribute)el.setAttribute('data-theme',t);
@@ -2671,7 +2670,7 @@ function applyTheme(){
   }catch(e){}
 }
 function setTheme(id){
-  if(!ownerEdit()){toast('Tampilan & warna restoran hanya dapat diubah oleh Owner. Gunakan tema pribadi di panel Profil Pribadi.');return}
+  if(!ownerEdit()){toast('Tampilan & warna restoran hanya dapat diubah oleh Owner. Semua akun staf mengikuti tema restoran.');return}
   if(!THEMES.some(t=>t.id===id)){toast('Tema tidak ditemukan.');return}
   store.theme=id;
   if(!saveStore()){toast('Gagal menyimpan tema.');return}
@@ -2697,9 +2696,24 @@ function providerCard(p){
    Tersimpan di server lewat /api/profile — TERPISAH dari identitas restoran
    (workspace). Hanya pemilik sesi yang boleh mengubah profilnya sendiri. */
 let pfTimer=null;
+/* baca nilai kolom Profil Pribadi -> patch yang benar-benar berubah */
+function profilePatchFromDom(){
+  const u=sessionUser();
+  if(!u)return null;
+  const nameEl=document.getElementById('pfName');
+  const phoneEl=document.getElementById('pfPhone');
+  if(!nameEl&&!phoneEl)return null;
+  const patch={};
+  const nm=String(nameEl?nameEl.value:'').trim();
+  const ph=String(phoneEl?phoneEl.value:'').trim();
+  if(nm&&nm!==String(u.name||''))patch.name=nm;
+  if(ph!==String(u.phone||''))patch.phone=ph;
+  return patch;
+}
 function saveProfilePatch(patch,note){
   const u=sessionUser();
   if(!u){toast('Masuk dengan akun Anda untuk mengubah profil pribadi.');return Promise.resolve(null)}
+  if(!patch||!Object.keys(patch).length)return Promise.resolve(null);
   return window.RasaAPI.put('/api/profile',patch).then(res=>{
     const s=window.RasaSession;
     if(s.user&&res&&res.user)Object.assign(s.user,res.user);
@@ -2711,19 +2725,25 @@ function saveProfilePatch(patch,note){
 }
 function scheduleProfileSave(){
   clearTimeout(pfTimer);
-  pfTimer=setTimeout(()=>{
-    const nameEl=document.getElementById('pfName');
-    const u=sessionUser();
-    if(!nameEl||!u)return;
-    const phoneEl=document.getElementById('pfPhone');
-    const patch={};
-    const nm=String(nameEl.value||'').trim();
-    const ph=String(phoneEl?phoneEl.value:'').trim();
-    if(nm&&nm!==String(u.name||''))patch.name=nm;
-    if(ph!==String(u.phone||''))patch.phone=ph;
-    if(!Object.keys(patch).length)return;
-    saveProfilePatch(patch,'Profil pribadi diperbarui.');
-  },700);
+  /* nilai dibaca SEKARANG (saat pengguna mengetik) — bukan saat jeda selesai,
+     agar tidak hilang bila panel sempat digambar ulang di tengah mengetik */
+  const patch=profilePatchFromDom();
+  if(!patch||!Object.keys(patch).length)return;
+  pfTimer=setTimeout(()=>{pfTimer=null;saveProfilePatch(patch,'Profil pribadi diperbarui.')},700);
+}
+/* simpan seketika saat kolom ditinggalkan (blur / Enter) — tanpa menunggu jeda */
+function flushProfileSave(){
+  if(!pfTimer)return;
+  clearTimeout(pfTimer);pfTimer=null;
+  const patch=profilePatchFromDom();
+  if(patch&&Object.keys(patch).length)saveProfilePatch(patch,'Profil pribadi diperbarui.');
+}
+/* simpan sekarang juga (tombol Simpan profil) — memberi umpan balik pasti */
+function profileSaveNow(){
+  const patch=profilePatchFromDom();
+  if(!patch||!Object.keys(patch).length){toast('Tidak ada perubahan pada profil pribadi Anda.');return}
+  clearTimeout(pfTimer);pfTimer=null;
+  saveProfilePatch(patch,'Profil pribadi tersimpan ✓');
 }
 function handleProfilePhoto(file){
   if(!sessionUser()){toast('Masuk dengan akun Anda untuk mengubah foto profil.');return}
@@ -2762,9 +2782,6 @@ async function logoutAllConfirmed(){
 function profilePanel(){
   const u=sessionUser();
   if(!u)return '';
-  const cur=String(u.theme||'');
-  const themeOpts='<option value=""'+(cur?'':' selected')+'>Ikuti tema restoran</option>'+
-    THEMES.map(t=>'<option value="'+t.id+'"'+(cur===t.id?' selected':'')+'>'+esc(t.name)+'</option>').join('');
   const ini=initialsOf(u.name||u.email||'');
   const photo=String(u.avatar||'');
   return `
@@ -2785,16 +2802,19 @@ function profilePanel(){
         <label class="field"><span>Nama tampilan</span><input class="input" id="pfName" value="${esc(u.name||'')}" maxlength="60" placeholder="Nama Anda" autocomplete="off"></label>
         <label class="field"><span>Nomor telepon pribadi</span><input class="input" id="pfPhone" value="${esc(u.phone||'')}" maxlength="24" placeholder="0812-3456-7890" autocomplete="off"></label>
       </div>
+      <div class="btn-row" style="margin-top:-2px">
+        <button class="btn btn-primary" data-action="profile-save"><span class="btn-icon">✓</span> Simpan profil</button>
+        <small class="subcell">Perubahan juga tersimpan otomatis ±1 detik setelah Anda berhenti mengetik — tombol ini untuk menyimpan seketika.</small>
+      </div>
       <div class="field-row">
         <label class="field"><span>Jabatan (role)</span><input class="input" value="${esc(roleName(u.role))}" disabled><small class="subcell">Diatur oleh Owner lewat halaman Staf &amp; Role — tidak bisa diubah sendiri</small></label>
         <label class="field"><span>Email akun</span><input class="input" value="${esc(u.email||'')}" disabled><small class="subcell">Perubahan email hanya melalui kebijakan Owner</small></label>
       </div>
-      <label class="field"><span>Tema tampilan pribadi</span><select class="input" id="pfTheme">${themeOpts}</select><small class="subcell">Berlaku hanya untuk akun Anda — tampilan restoran tetap mengikuti pilihan Owner</small></label>
       <div class="pf-security">
         <div><b>Keamanan akun</b><small>Masuk memakai kode OTP 6 digit ke email Anda — tidak ada kata sandi yang disimpan di server. Bila merasa sesi Anda tidak aman, cabut seluruh sesi aktif dari semua perangkat.</small></div>
         <button class="btn btn-danger" data-action="profile-logout-all">⏻ Keluar dari semua perangkat</button>
       </div>
-      <div class="hint">Perubahan nama, telepon, foto, dan tema pribadi tersimpan otomatis dan hanya berlaku untuk akun Anda — <b>tidak mengubah</b> nama Owner, nama restoran, maupun data staf lain.</div>
+      <div class="hint">Perubahan nama, telepon, dan foto profil tersimpan otomatis setelah Anda berhenti mengetik dan hanya berlaku untuk akun Anda — <b>tidak mengubah</b> nama Owner, nama restoran, maupun data staf lain. Tampilan warna mengikuti <b>tema restoran</b> yang dipilih Owner.</div>
     </div>`;
 }
 function settingsPage(){
@@ -2851,7 +2871,7 @@ function settingsPage(){
     <div class="panel span-2">
       <div class="panel-head"><div><div class="panel-title">Tampilan & warna</div><div class="panel-caption">6 pilihan color grading — ${owner?'bebas diganti kapan saja, tersimpan otomatis':'pilihan Owner untuk seluruh staf'}</div></div></div>
       <div class="theme-grid">${THEMES.map(t=>owner?themeCard(t):themeCard(t,true)).join('')}</div>
-      <div class="hint">Tema mengubah warna sidebar, kanvas, tombol, aksen, kartu, hingga grafik Ringkasan sekaligus. Pilihan tema <b>tetap dipertahankan</b> meski data operasional di-reset.${owner?'':' Untuk tampilan pribadi Anda, pilih <b>Tema tampilan pribadi</b> di panel <b>Profil pribadi Anda</b>.'}</div>
+      <div class="hint">Tema mengubah warna sidebar, kanvas, tombol, aksen, kartu, hingga grafik Ringkasan sekaligus. Pilihan tema <b>tetap dipertahankan</b> meski data operasional di-reset.${owner?'':' Seluruh akun staf (termasuk Anda) <b>otomatis mengikuti tema restoran</b> ini — pilihan hanya dapat diubah Owner.'}</div>
       ${roNote}
     </div>
 
@@ -3093,6 +3113,7 @@ document.addEventListener('click',e=>{
   if(action==='remove-avatar'){removeAvatar();return}
   /* --- profil pribadi (hanya sesi login milik sendiri) --- */
   if(action==='profile-photo-remove'){removeProfilePhoto();return}
+  if(action==='profile-save'){profileSaveNow();return}
   if(action==='profile-logout-all'){askLogoutAll();return}
   if(action==='profile-logout-all-confirm'){logoutAllConfirmed();return}
   if(action==='booking'){openResForm();return}
@@ -3274,10 +3295,7 @@ function clearMenuSearch(){
 document.addEventListener('change',e=>{
   if(e.target.id==='avatarInput'){handleAvatarFile(e.target.files&&e.target.files[0]);e.target.value=''}
   else if(e.target.id==='pfPhotoInput'){handleProfilePhoto(e.target.files&&e.target.files[0]);e.target.value=''}
-  else if(e.target.id==='pfTheme'){
-    const v=String(e.target.value||'');
-    saveProfilePatch({theme:v},v?'Tema pribadi diterapkan — hanya untuk akun Anda.':'Tema pribadi dikembalikan ke tema restoran.');
-  }
+  else if(e.target.id==='pfName'||e.target.id==='pfPhone'){flushProfileSave()}
   else if(e.target.id==='mfImage'){handleMenuImage(e.target.files&&e.target.files[0]);e.target.value=''}
   else if(e.target.id==='pvQty'||e.target.name==='pvV'){pvPickChanged(e.target)}
   else if(e.target.id==='resDur'){
@@ -3285,7 +3303,11 @@ document.addEventListener('change',e=>{
     if(resDraft&&m>=15){resDraft.durMin=m;resFormRefresh()}
   }
 });
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeModal();closeSidebar()}});
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){closeModal();closeSidebar();return}
+  /* Enter pada kolom Profil Pribadi = simpan seketika */
+  if(e.key==='Enter'&&e.target&&(e.target.id==='pfName'||e.target.id==='pfPhone')){e.preventDefault();profileSaveNow()}
+});
 document.getElementById('menuToggle').addEventListener('click',openSidebar);
 const sidebarBackdrop=document.getElementById('sidebarBackdrop');
 if(sidebarBackdrop)sidebarBackdrop.addEventListener('click',closeSidebar);

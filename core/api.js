@@ -43,6 +43,9 @@ window.RasaSession = {
 window.canPerm = function (module, action) {
   const s = window.RasaSession;
   if (!s.user) return true;                 /* mode lokal tanpa akun: fitur tetap jalan */
+  /* Pengaturan (settings) SELALU terbuka untuk semua staf — server memakai
+     aturan yang sama, jadi halaman Profil Pribadi & akun tidak pernah terkunci. */
+  if (module === 'settings' && (action || 'read') === 'read') return true;
   if (!s.permissions) return false;
   if (module === 'misc') return true;
   const list = s.permissions[module];

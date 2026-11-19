@@ -204,6 +204,26 @@ export const DEFAULT_MATRIX = {
 };
 
 /* Bentuk matriks siap dikirim ke klien: { module: [aksi] } */
+
+/* ============================================================
+   MODUL YANG SELALU TERBUKA — tidak bisa dicabut oleh siapa pun
+   (baik lewat matriks role maupun tombol Wewenang per staf).
+   'settings' (Pengaturan) wajib terbuka bagi SEMUA staf: halaman itu
+   memuat Profil Pribadi, keamanan akun (keluar semua perangkat), dan
+   identitas restoran (tetap terkunci untuk non-Owner di sisi server).
+   ============================================================ */
+export const ALWAYS_OPEN = ['settings'];
+
+export function withAlwaysOpen(perms) {
+  const out = Object.assign({}, perms || {});
+  ALWAYS_OPEN.forEach(m => {
+    const cur = Array.isArray(out[m]) ? out[m].slice() : [];
+    if (cur.indexOf('read') < 0) cur.unshift('read');
+    out[m] = cur;
+  });
+  return out;
+}
+
 export function matrixFor(role, storedRows) {
   if (role === 'owner') {
     const full = {};
@@ -223,7 +243,7 @@ export function matrixFor(role, storedRows) {
       out[mod] = acts;
     });
   }
-  return out;
+  return withAlwaysOpen(out);
 }
 
 function safeActions(raw) {
@@ -248,13 +268,13 @@ export function matrixToRows(role, matrix) {
    Owner bisa mencabut / menambah wewenang satu staf tanpa mengubah
    matriks role. Baris ini menimpa matriks role untuk staf tersebut. */
 export function applyUserOverrides(perms, rows) {
-  if (!Array.isArray(rows) || !rows.length) return perms || {};
+  if (!Array.isArray(rows) || !rows.length) return withAlwaysOpen(perms || {});
   const out = Object.assign({}, perms || {});
   rows.forEach(row => {
     if (!row || !MODULES.some(m => m.id === row.module)) return;
     out[row.module] = safeActions(row.actions);
   });
-  return out;
+  return withAlwaysOpen(out);
 }
 
 /* Bentuk { module: [aksi] } -> baris user_perms siap simpan */
