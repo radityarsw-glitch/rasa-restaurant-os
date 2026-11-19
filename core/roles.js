@@ -35,6 +35,45 @@ window.RasaRoles = (function () {
   ];
   const ROLE_LABELS = { owner: 'Owner', manager: 'Manager', kasir: 'Kasir', kitchen: 'Kitchen', waiter: 'Waiter' };
 
+  /* ---------- Struktur modal Wewenang: DIPERSEMPIT & DIKELOMPOKKAN ----------
+     Modal tidak lagi menampilkan seluruh 23 modul dalam satu daftar datar.
+     Hanya modul inti operasional yang muncul, dikelompokkan per seksi supaya
+     terorganisir dan tidak membingungkan Owner:
+       - Modul lanjutan (Accounting, Analytics, Audit log, Alert Center,
+         Shift, Pelanggan, Resep/BOM, Permission) TIDAK ditampilkan —
+         modul itu tetap mengikuti preset role-nya masing-masing.
+       - Bila sebelumnya ada override tersimpan untuk modul tersembunyi,
+         baris override itu TIDAK dihapus saat Owner menyimpan perubahan
+         (lihat staffPermsSave) — tidak ada wewenang yang diam-diam hilang.
+       - Ringkasan & Pengaturan tetap tampil sebagai baris terkunci
+         (selalu terbuka, tidak bisa dicabut). */
+  const PERM_GROUPS = [
+    {
+      title: 'Operasional harian', hint: 'layanan tamu, meja & transaksi',
+      mods: [
+        ['pos', 'POS / Kasir'], ['orders', 'Pesanan'], ['reservations', 'Reservasi'],
+        ['tables', 'Meja'], ['antar', 'Antar Ke Meja'], ['clear-table', 'Kosongkan Meja']
+      ]
+    },
+    {
+      title: 'Dapur & menu', hint: 'tampilan dapur dan daftar jual',
+      mods: [['kitchen', 'Kitchen Display'], ['menu', 'Menu & produk']]
+    },
+    {
+      title: 'Stok & pengadaan', hint: 'bahan, stok, dan pemasok',
+      mods: [['inventory', 'Persediaan'], ['procurement', 'Pengadaan']]
+    },
+    {
+      title: 'Laporan & tim', hint: 'hasil usaha dan akun staf',
+      mods: [['reports', 'Laporan'], ['staff', 'Staf']]
+    },
+    {
+      title: 'Selalu terbuka', hint: 'tidak bisa dicabut dari siapa pun',
+      locked: true,
+      mods: [['overview', 'Ringkasan'], ['settings', 'Pengaturan']]
+    }
+  ];
+
   const state = {
     staff: null, matrix: null, staffLoading: false, permLoading: false, formOpen: false,
     userPerms: null,          /* { userId: { modul: [aksi] } } wewenang khusus staf */
@@ -393,15 +432,16 @@ window.RasaRoles = (function () {
       /* --- TAB NONAKTIF --- */
       const acts = [];
       if (canUpdate) {
-        acts.push(`<button class="staff-act is-on" data-action="staff-toggle:${esc(String(u.id))}" title="Aktifkan kembali akun ini"><i>⏻</i>Aktifkan</button>`);
+        /* glow-act = tombol menyala (CSS 24.8) supaya menonjol dari baris redup */
+        acts.push(`<button class="staff-act is-on glow-act" data-action="staff-toggle:${esc(String(u.id))}" title="Aktifkan kembali akun ini"><i>⏻</i>Aktifkan</button>`);
       }
       if (canDelete && ownerActor && String(u.id) !== String(me && me.id)) {
-        acts.push(`<button class="staff-act is-del" data-action="staff-del:${esc(String(u.id))}" title="Hapus akun secara permanen"><i>✕</i>Hapus</button>`);
+        acts.push(`<button class="staff-act is-del glow-act" data-action="staff-del:${esc(String(u.id))}" title="Hapus akun secara permanen"><i>✕</i>Hapus</button>`);
       }
       return `<tr class="row-dim"><td><b>${esc(u.name || '—')}</b></td><td>${esc(u.email || '')}</td>
         <td><b>${esc(ROLE_LABELS[u.role] || u.role)}</b><small class="subcell">${esc(staffPermSummary(u))}</small></td>
         <td>${esc(fmtWhen(u.deactivatedAt))}</td>
-        <td style="text-align:right"><div class="staff-actions">${acts.join('')}</div></td></tr>`;
+        <td class="cell-actions" style="text-align:right"><div class="staff-actions">${acts.join('')}</div></td></tr>`;
     }).join('');
   }
 
@@ -478,19 +518,24 @@ window.RasaRoles = (function () {
     if (!state.matrix || !state.userPerms) { await loadPerms(); }
     if (!state.matrix) { toast('Preset izin role belum dimuat dari server.'); return; }
     const eff = staffEffective(u);
-    const rows = MODULE_LABELS.map(([mod, label]) => {
-      const on = Array.isArray(eff[mod]) && eff[mod].indexOf('read') >= 0;
-      /* Ringkasan & Pengaturan selalu terbuka untuk semua staf (tidak bisa dicabut) */
-      const locked = mod === 'overview' || mod === 'settings';
-      return `<label class="uperm-row${locked ? ' locked' : ''}">
-        <input type="checkbox" data-uperm="${mod}"${on ? ' checked' : ''}${locked ? ' disabled' : ''}>
-        <span class="uperm-text"><b>${esc(label)}</b><small>${esc(mod)}${locked ? ' · selalu terbuka' : ''}</small></span></label>`;
+    const groups = PERM_GROUPS.map(g => {
+      const rows = g.mods.map(([mod, label]) => {
+        const on = Array.isArray(eff[mod]) && eff[mod].indexOf('read') >= 0;
+        /* Ringkasan & Pengaturan selalu terbuka untuk semua staf (tidak bisa dicabut) */
+        const locked = !!g.locked || mod === 'overview' || mod === 'settings';
+        return `<label class="uperm-row${locked ? ' locked' : ''}">
+          <input type="checkbox" data-uperm="${mod}"${on ? ' checked' : ''}${locked ? ' disabled' : ''}>
+          <span class="uperm-text"><b>${esc(label)}</b><small>${esc(mod)}${locked ? ' · selalu terbuka' : ''}</small></span></label>`;
+      }).join('');
+      return `<div class="uperm-group">
+        <div class="uperm-group-title">${esc(g.title)}<small>${esc(g.hint || '')}</small></div>
+        <div class="uperm-list">${rows}</div></div>`;
     }).join('');
     openModal(`<div class="modal-head"><span class="provider-mark" style="--pm:#a97c2c">⛨</span><div><b>Wewenang ${esc(u.name || u.email)}</b><small>${esc(ROLE_LABELS[u.role] || u.role)} · dicabut/diberikan per staf, berlaku langsung</small></div><button class="modal-close" data-action="close-modal" aria-label="Tutup">×</button></div>
-    <p class="modal-text">Batalkan centang untuk <b>mencabut</b> wewenang, centang lagi untuk <b>mengembalikan</b>. Perubahan hanya menyangkut staf ini dan <b>tidak mengubah staf lain</b> — disimpan ke server, divalidasi ulang, lalu langsung dipakai setiap staf ini membuka fitur (termasuk lewat tautan langsung) tanpa perlu masuk ulang. <b>Data restoran tetap tersimpan utuh</b>; yang dicabut hanya aksesnya.</p>
-    <div class="uperm-list">${rows}</div>
+    <p class="modal-text">Batalkan centang untuk <b>mencabut</b> wewenang, centang lagi untuk <b>mengembalikan</b>. Daftar ini <b>dikelompokkan per bidang usaha</b> dan hanya memuat modul inti agar tidak membingungkan. Perubahan hanya menyangkut staf ini dan <b>tidak mengubah staf lain</b> — disimpan ke server, divalidasi ulang, lalu langsung dipakai setiap staf ini membuka fitur (termasuk lewat tautan langsung) tanpa perlu masuk ulang. <b>Data restoran tetap tersimpan utuh</b>; yang dicabut hanya aksesnya.</p>
+    <div class="uperm-groups">${groups}</div>
     <div class="modal-actions"><button class="btn" data-action="close-modal">Batal</button><button class="btn btn-primary" data-action="staff-perms-save:${esc(String(u.id))}">Simpan wewenang</button></div>
-    <small class="modal-note">Centang mengikuti preset role <b>${esc(ROLE_LABELS[u.role] || u.role)}</b>, lalu disesuaikan per staf. Setiap centang divalidasi ulang oleh server.</small>`);
+    <small class="modal-note">Centang mengikuti preset role <b>${esc(ROLE_LABELS[u.role] || u.role)}</b>, lalu disesuaikan per staf. Setiap centang divalidasi ulang oleh server. Modul lanjutan (Accounting, Analytics, Audit log, Alert Center, Shift, Pelanggan, Resep/BOM, Permission) tidak ditampilkan di sini dan <b>ikut preset role</b> — perubahan wewenang staf untuk modul itu tetap tersimpan apa adanya.</small>`);
   }
 
   async function staffPermsSave(id) {
@@ -501,9 +546,21 @@ window.RasaRoles = (function () {
     if (!state.matrix) { await loadPerms(true); }
     if (!state.matrix) { toast('Preset izin role belum dimuat dari server.'); return; }
     const eff = {};
+    /* Override staf yang sudah tersimpan sebelumnya — dipakai untuk
+       mempertahankan modul yang tidak ditampilkan di modal (lihat bawah) */
+    const prev = (state.userPerms && state.userPerms[u.id]) || {};
     MODULE_LABELS.forEach(([mod]) => {
       const cb = document.querySelector('[data-uperm="' + mod + '"]');
-      if (!cb) return;
+      if (!cb) {
+        /* Modul lanjutan tidak ada di modal: baris override yang sudah ada
+           untuk modul itu DIPERTAHANKAN apa adanya, supaya tidak ada
+           wewenang yang diam-diam kembali ke preset role. Bila belum pernah
+           dioverride, key-nya tidak dikirim = ikut preset role. */
+        if (Object.prototype.hasOwnProperty.call(prev, mod)) {
+          eff[mod] = Array.isArray(prev[mod]) ? prev[mod].slice() : [];
+        }
+        return;
+      }
       if (mod === 'overview') { eff[mod] = ['read', 'export']; return; }
       const roleRow = (state.matrix[u.role] && state.matrix[u.role][mod]) || [];
       if (mod === 'settings') {

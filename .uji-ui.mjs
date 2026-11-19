@@ -100,6 +100,13 @@ var iv=setInterval(function(){
     R.hasActivateBtn = txt.indexOf('Aktifkan')>=0;
     R.deactDate = dateCell;
     R.deactDateShown = !!dateCell && dateCell!=='—' && /\\d{4}/.test(dateCell);
+    /* tombol Akun Nonaktif harus MENYALA (kelas glow-act) & sel aksi tidak redup */
+    var glowBtns=rows[0].querySelectorAll('.staff-act.glow-act');
+    R.glowBtnCount=glowBtns.length;
+    R.glowOn=!!rows[0].querySelector('.staff-act.is-on.glow-act');
+    R.glowDel=!!rows[0].querySelector('.staff-act.is-del.glow-act');
+    var actTd=rows[0].querySelector('td.cell-actions');
+    R.actionsNotDimmed=!!actTd && getComputedStyle(actTd).opacity==='1';
     step=4; return;
   }
   if(step===4){
@@ -165,6 +172,9 @@ else {
     check(R.movedOutOfActive === true, 'staf berpindah keluar dari tab Akun Aktif (count nonaktif=' + R.countInactive + ')');
     check(R.inactiveRow === true, 'staf muncul di tab Akun Nonaktif');
     check(R.hasActivateBtn === true, 'tab nonaktif memuat tombol Aktifkan');
+    check(R.glowBtnCount >= 2 && R.glowOn === true && R.glowDel === true,
+      'tombol Aktifkan & Hapus di Akun Nonaktif memakai gaya menyala (glow-act)');
+    check(R.actionsNotDimmed === true, 'sel aksi tidak ikut redup (opacity 100%)');
     check(R.deactDateShown === true, 'tanggal penonaktifkan tampil: ' + R.deactDate);
     check(R.noThemeSelect === true, 'field "Tema tampilan pribadi" sudah dihapus (select pfTheme tidak ada)');
     check(R.noThemeLabel === true, 'label "Tema tampilan pribadi" tidak ada di panel profil');

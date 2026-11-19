@@ -2806,10 +2806,25 @@ html[data-theme="midnight"] .denied-icon{color:#ef9b86;background:rgba(224,122,9
 
 /* ============================================================
    23. WEWENANG KHUSUS PER STAF (modal Owner)
+   Modal DIPERSEMPIT: modul inti dikelompokkan per seksi (lihat
+   PERM_GROUPS di core/roles.js) supaya rapi dan tidak membingungkan.
    ============================================================ */
+.uperm-groups{
+  display:flex;flex-direction:column;gap:11px;
+  margin:12px 0 4px;max-height:50vh;overflow:auto;padding-right:2px}
+.uperm-group{
+  border:1px solid var(--line);border-radius:12px;
+  background:var(--white);padding:9px 10px 10px}
+.uperm-group-title{
+  display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;
+  font:800 10px/1.3 'Plus Jakarta Sans',sans-serif;letter-spacing:.6px;
+  text-transform:uppercase;color:var(--gold-deep);margin:0 0 8px}
+.uperm-group-title small{
+  font-size:9px;font-weight:600;letter-spacing:.2px;
+  text-transform:none;color:var(--muted)}
 .uperm-list{
   display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;
-  margin:12px 0 4px;max-height:46vh;overflow:auto;padding-right:2px}
+  margin:0;max-height:none;overflow:visible;padding-right:0}
 .uperm-row{
   display:flex;align-items:center;gap:9px;padding:9px 10px;
   border:1px solid var(--line);border-radius:10px;background:var(--white);
@@ -2938,6 +2953,64 @@ html[data-theme="midnight"] .link-btn:hover{color:#9df2ff;filter:none}
 .staff-act.is-perms:hover,.staff-act.is-del:hover{filter:brightness(1.07)}
 @media(max-width:760px){
   .staff-act{min-height:38px;padding:8px 12px;font-size:11px}
+}
+
+/* ---- 24.8 Tombol pada tab Akun Nonaktif: AKTIFKAN & HAPUS MENYALA ----
+   Baris datanya tetap redup (.row-dim), tetapi sel aksi dibuat terang
+   (opacity kembali 100%) dan tombolnya diberi cahaya berwarna (glow)
+   berdenyut halus agar menarik perhatian. Warna LATAR & TEKS tidak
+   diubah dari bagian 24.7 (latar solid + tulisan putih), jadi kontras
+   yang diukur uji .uji-staf.ps1 tetap terpenuhi. */
+.row-dim td.cell-actions{opacity:1}
+.staff-act.glow-act{border-width:1.5px;transition:.16s ease,box-shadow .35s ease}
+.staff-act.glow-act.is-on{
+  border-color:#7ce3b4;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.3),
+    0 0 0 1px rgba(124,227,180,.5),
+    0 4px 14px -4px rgba(46,129,87,.95),
+    0 0 18px -5px rgba(72,220,158,.85);
+  animation:staffGlowOn 2.4s ease-in-out infinite}
+.staff-act.glow-act.is-on:hover{
+  border-color:#a5f0cd;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.4),
+    0 0 0 1px rgba(165,240,205,.75),
+    0 6px 18px -4px rgba(46,129,87,1),
+    0 0 26px -3px rgba(72,220,158,1)}
+.staff-act.glow-act.is-del{
+  border-color:#ffab9a;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.3),
+    0 0 0 1px rgba(255,171,154,.5),
+    0 4px 14px -4px rgba(176,71,58,.95),
+    0 0 18px -5px rgba(255,120,95,.85);
+  animation:staffGlowDel 2.4s ease-in-out infinite}
+.staff-act.glow-act.is-del:hover{
+  border-color:#ffc9be;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.4),
+    0 0 0 1px rgba(255,201,190,.8),
+    0 6px 18px -4px rgba(176,71,58,1),
+    0 0 26px -3px rgba(255,120,95,1)}
+@keyframes staffGlowOn{
+  0%,100%{box-shadow:inset 0 1px 0 rgba(255,255,255,.3),
+    0 0 0 1px rgba(124,227,180,.45),
+    0 4px 14px -4px rgba(46,129,87,.9),
+    0 0 14px -5px rgba(72,220,158,.7)}
+  50%{box-shadow:inset 0 1px 0 rgba(255,255,255,.35),
+    0 0 0 1px rgba(124,227,180,.85),
+    0 5px 16px -4px rgba(46,129,87,1),
+    0 0 28px -2px rgba(72,220,158,1)}
+}
+@keyframes staffGlowDel{
+  0%,100%{box-shadow:inset 0 1px 0 rgba(255,255,255,.3),
+    0 0 0 1px rgba(255,171,154,.45),
+    0 4px 14px -4px rgba(176,71,58,.9),
+    0 0 14px -5px rgba(255,120,95,.7)}
+  50%{box-shadow:inset 0 1px 0 rgba(255,255,255,.35),
+    0 0 0 1px rgba(255,171,154,.85),
+    0 5px 16px -4px rgba(176,71,58,1),
+    0 0 28px -2px rgba(255,120,95,1)}
+}
+@media (prefers-reduced-motion:reduce){
+  .staff-act.glow-act{animation:none}
 }
 
 

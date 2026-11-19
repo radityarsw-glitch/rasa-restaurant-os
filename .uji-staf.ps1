@@ -31,7 +31,14 @@ Ok 'owner login'
 # tambah satu staf supaya barisnya muncul di tabel
 $s = Call 'POST' '/api/staff' @{ name = 'Staf Uji Tombol'; email = "staf.btn2$((Get-Random))@rasa.local"; role = 'kitchen' } $tok
 if (-not $s.ok) { Fail 'tambah staf'; exit 1 }
+$staffId = $s.user.id
 Ok 'staf ditambahkan'
+
+# siapkan "jebakan": override untuk modul LANJUTAN (analytics) yang tidak
+# ditampilkan di modal — wajib tetap utuh setelah Owner menyimpan modal
+$trap = Call 'PUT' '/api/permissions' @{ users = @{ $staffId = @{ analytics = @('read') } } } $tok
+if (-not $trap.ok) { Fail 'menyiapkan override analytics'; exit 1 }
+Ok 'override modul lanjutan (analytics) disiapkan sebagai jebakan'
 
 $page = @"
 <!doctype html><meta charset="utf-8"><title>boot staf login</title><script>
@@ -70,7 +77,9 @@ $probe = @'
 <div id="probe"></div><pre id="out">pending</pre>
 <script>
 var ITEMS=[['Nonaktifkan','staff-act is-off'],['Aktifkan','staff-act is-on'],
-           ['Wewenang','staff-act is-perms'],['Hapus','staff-act is-del']];
+           ['Wewenang','staff-act is-perms'],['Hapus','staff-act is-del'],
+           ['Aktifkan menyala','staff-act is-on glow-act'],
+           ['Hapus menyala','staff-act is-del glow-act']];
 function chan(v){v/=255;return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4);}
 function lum(c){return 0.2126*chan(c[0])+0.7152*chan(c[1])+0.0722*chan(c[2]);}
 function parse(c){var m=c.match(/[\d.]+/g);if(!m)return null;return [Number(m[0]),Number(m[1]),Number(m[2])];}
@@ -119,7 +128,7 @@ else {
     if ($ratio -lt $worst) { $worst = $ratio }
     if ($ratio -lt 4.5) { Fail ('{0} / {1}: kontras {2} (latar {3}, teks {4})' -f $p[0],$p[1],$p[4],$p[2],$p[3]) }
   }
-  if ($worst -ge 4.5) { Ok ('24 kombinasi warna tombol staf (6 tema), kontras terendah ' + $worst.ToString('0.00') + ':1') }
+  if ($worst -ge 4.5) { Ok ('36 kombinasi warna tombol staf (6 tombol x 6 tema), kontras terendah ' + $worst.ToString('0.00') + ':1') }
 }
 
 # --- modal Wewenang: daftar modul harus memuat "Antar Ke Meja" ---
@@ -155,6 +164,14 @@ var iv=setInterval(function(){
     modal:true,
     head:head?head.textContent:'',
     rows:d.querySelectorAll('[data-uperm]').length,
+    groups:d.querySelectorAll('.uperm-group').length,
+    groupTitles:Array.prototype.map.call(d.querySelectorAll('.uperm-group-title'),
+      function(x){return x.firstChild&&x.firstChild.nodeType===3?x.firstChild.textContent.trim():x.textContent.trim();}),
+    /* modul lanjutan tidak boleh tampil di modal yang dipangkas */
+    hidden:!d.querySelector('[data-uperm="analytics"]') &&
+           !d.querySelector('[data-uperm="audit"]') &&
+           !d.querySelector('[data-uperm="accounting"]') &&
+           !d.querySelector('[data-uperm="permissions"]'),
     antar:cb?cb.checked:null,
     antarText:cb?(cb.parentNode.textContent||'').slice(0,60):''
   });
@@ -182,11 +199,88 @@ if (-not $m3 -or $m3 -eq 'NO_BUTTON' -or $m3 -eq 'NO_MODAL' -or $m3 -eq 'pending
   if (-not $j) { Fail ('hasil uji modal tidak valid: ' + $m3) }
   else {
     if ($j.modal -and ($j.head -like 'Wewenang*')) { Ok ('modal ' + $j.head + ' terbuka') } else { Fail 'modal Wewenang tidak terbuka' }
-    if ($j.rows -ge 22) { Ok ('daftar wewenang memuat ' + $j.rows + ' modul') } else { Fail ('baris modul hanya ' + $j.rows) }
+    if ($j.rows -eq 14) { Ok ('modal dipersempit: ' + $j.rows + ' modul inti') } else { Fail ('baris modul ' + $j.rows + ' (diharapkan 14 = 12 inti + 2 terkunci)') }
+    if ($j.groups -ge 5) { Ok ('modul dikelompokkan dalam ' + $j.groups + ' seksi: ' + ($j.groupTitles -join ' · ')) } else { Fail ('sekelompok hanya ' + $j.groups) }
+    if ($j.hidden) { Ok 'modul lanjutan (analytics/audit/accounting/permissions) tidak lagi membingungkan' } else { Fail 'modul lanjutan masih tampil di modal' }
     if ($j.antar -eq $true -and ($j.antarText -like '*Antar Ke Meja*')) { Ok 'centang "Antar Ke Meja" tampil & tercentang sesuai preset' } else { Fail 'modul Antar Ke Meja tidak ada di modal Wewenang' }
   }
 }
-Remove-Item (Join-Path $assets 'test-staff-login.html'),(Join-Path $assets 'test-staff-modal.html'),(Join-Path $assets 'test-staff-warna.html') -Force -ErrorAction SilentlyContinue
+# --- modal Wewenang: simpan perubahan, modul tersembunyi wajib utuh ---
+$savePage = @'
+<!doctype html><meta charset="utf-8"><title>simpan wewenang</title>
+<style>body{font:13px sans-serif;padding:10px}</style>
+<div>memuat aplikasi di iframe...</div><pre id="out">pending</pre>
+<script>
+try{localStorage.setItem('restaurant-os:session','__TOKEN__');}catch(e){}
+var f=document.createElement('iframe');
+f.style.cssText='position:fixed;left:-5000px;top:0;width:1280px;height:900px';
+f.src='/#settings';
+document.body.appendChild(f);
+var n=0, phase=0;
+var iv=setInterval(function(){
+  n++;
+  var d=null; try{d=f.contentDocument}catch(e){}
+  if(!d)return;
+  if(phase===0){
+    var b=d.querySelector('[data-action^="staff-perms:"]');
+    if(!b){ if(n>70){clearInterval(iv);document.getElementById('out').textContent='NO_BUTTON';} return; }
+    b.click(); phase=1; return;
+  }
+  if(phase===1){
+    var cb=d.querySelector('[data-uperm="orders"]');
+    if(!cb){ if(n>140){clearInterval(iv);document.getElementById('out').textContent='NO_ORDERS';} return; }
+    cb.checked=false;
+    cb.dispatchEvent(new Event('change',{bubbles:true}));
+    var sv=d.querySelector('[data-action^="staff-perms-save:"]');
+    if(!sv){ if(n>140){clearInterval(iv);document.getElementById('out').textContent='NO_SAVE';} return; }
+    sv.click(); phase=2; return;
+  }
+  if(phase===2){
+    var modalOpen=!!d.querySelector('.uperm-groups');
+    var t=d.getElementById('toast');
+    var tt=t?(t.textContent||''):'';
+    if(!modalOpen || /disimpan/.test(tt)){
+      clearInterval(iv); document.getElementById('out').textContent='SAVED|'+tt;
+    } else if(n>200){
+      clearInterval(iv); document.getElementById('out').textContent='TIMEOUT|'+tt;
+    }
+    return;
+  }
+},200);
+</script>
+'@
+$savePage = $savePage.Replace('__TOKEN__', $tok)
+Set-Content -Path (Join-Path $assets 'test-staff-save.html') -Value $savePage -Encoding UTF8
+
+$prof4 = Join-Path $env:TEMP ('ss-' + [guid]::NewGuid().ToString('N').Substring(0,8))
+$out4  = Join-Path $env:TEMP ('ss-' + [guid]::NewGuid().ToString('N').Substring(0,8) + '.txt')
+$err4  = $out4 + '.err'
+$arg4 = @('--headless=new','--disable-gpu','--no-first-run',('--user-data-dir=' + $prof4),
+  '--virtual-time-budget=20000','--dump-dom',($base + '/test-staff-save.html'))
+Start-Process -FilePath $chrome -ArgumentList $arg4 -Wait -NoNewWindow `
+  -RedirectStandardOutput $out4 -RedirectStandardError $err4 | Out-Null
+$dom4 = Get-Content $out4 -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
+Remove-Item $prof4 -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item $out4,$err4 -Force -ErrorAction SilentlyContinue
+$m4 = [regex]::Match($dom4, '<pre id="out">([\s\S]*?)</pre>').Groups[1].Value
+if ($m4 -like 'SAVED*') { Ok ('modal tersimpan: ' + ($m4 -replace '^SAVED\|','')) }
+else { Fail ('simpan wewenang dari modal gagal: ' + $m4) }
+
+$perms = Call 'GET' '/api/permissions' $null $tok
+$row = $null
+if ($perms -and $perms.users) { $row = $perms.users.PSObject.Properties[$staffId].Value }
+if (-not $row) {
+  Fail 'baris wewenang staf tidak ditemukan setelah simpan'
+} else {
+  $orders = $row.orders
+  if ($null -ne $orders -and @($orders).Count -eq 0) { Ok 'modul Pesanan benar-benar dicabut lewat modal' }
+  else { Fail ('modul Pesanan tidak tercabut: ' + ($orders -join ',')) }
+  $an = $row.analytics
+  if ($an -and @($an) -contains 'read') { Ok 'override modul lanjutan (analytics) TETAP utuh — tidak hilang saat modal disimpan' }
+  else { Fail ('override analytics hilang saat modal disimpan: ' + ($an -join ',')) }
+}
+
+Remove-Item (Join-Path $assets 'test-staff-login.html'),(Join-Path $assets 'test-staff-modal.html'),(Join-Path $assets 'test-staff-warna.html'),(Join-Path $assets 'test-staff-save.html') -Force -ErrorAction SilentlyContinue
 
 Write-Host ''
 if ($failed -eq 0) { Write-Host 'HASIL: SEMUA LULUS' -ForegroundColor Green; exit 0 }
