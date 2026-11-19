@@ -132,7 +132,20 @@ var iv=setInterval(function(){
     return;
   }
   if(step===6){
-    step=7;
+    /* kembali ke tab Akun Aktif — kolom No Telepon ada di tab itu */
+    var tabs=Array.prototype.slice.call(d.querySelectorAll('[data-staff-tab]'));
+    var activeTab=tabs.filter(function(b){return b.getAttribute('data-staff-tab')==='active'})[0];
+    if(activeTab)activeTab.click();
+    step=7; return;
+  }
+  if(step===7){
+    step=8;
+    /* kolom No Telepon ada & baris "Anda" sudah ikut terupdate seketika
+       (syncSelfRow dipanggil app.js setelah Profil pribadi tersimpan) */
+    var hd=d.getElementById('staffHead'), bd=d.getElementById('staffBody');
+    R.phoneHeader=!!(hd&&/No Telepon/.test(hd.textContent||''));
+    R.phoneInTable=!!(bd&&(bd.textContent||'').indexOf(PHONE)>=0);
+    R.staffHeadText=hd?(hd.textContent||'').slice(0,120):'(thead tidak ada)';
     fetch('/api/profile',{headers:{authorization:'Bearer '+TOKEN}}).then(function(r){return r.json()}).then(function(j){
       var p=(j&&j.profile)||{};
       R.savedName=p.name; R.savedPhone=p.phone;
@@ -184,6 +197,8 @@ else {
     check(R.savedName === 'Nama Profil Uji', 'nama profil TERSIMPAN di server: ' + R.savedName);
     check(R.savedPhone === PHONE, 'telepon TERSIMPAN di server: ' + R.savedPhone);
     check(R.inputStillShows === true, 'kolom masih menampilkan nilai tersimpan (tidak kembali kosong)');
+    check(R.phoneHeader === true, 'kolom No Telepon tersedia di tabel Staf & Role');
+    check(R.phoneInTable === true, 'nomor telepon pemilik sesi langsung terupdate di tabel Staf & Role');
   }
 }
 

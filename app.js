@@ -2719,6 +2719,11 @@ function saveProfilePatch(patch,note){
     if(s.user&&res&&res.user)Object.assign(s.user,res.user);
     else if(s.user&&res&&res.profile)Object.assign(s.user,res.profile);
     applyIdentity();
+    /* baris "Anda" di panel Staf & Role ikut terupdate seketika
+       (kolom No Telepon / nama tampilan) tanpa menyegarkan halaman */
+    if(window.RasaRoles&&window.RasaRoles.syncSelfRow&&res){
+      window.RasaRoles.syncSelfRow(res.user||res.profile||sessionUser()||null);
+    }
     if(note)toast(note);
     return res;
   }).catch(e=>{toast(e.message);return null});

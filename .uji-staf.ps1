@@ -34,6 +34,11 @@ if (-not $s.ok) { Fail 'tambah staf'; exit 1 }
 $staffId = $s.user.id
 Ok 'staf ditambahkan'
 
+# nomor telepon staf — harus tampil di kolom "No Telepon" tabel Staf & Role
+$ph = Call 'PUT' ('/api/staff/' + $staffId) @{ phone = '0812-3456-7890' } $tok
+if (-not $ph.ok) { Fail 'menyimpan nomor telepon staf'; exit 1 }
+Ok 'nomor telepon staf tersimpan lewat API'
+
 # siapkan "jebakan": override untuk modul LANJUTAN (analytics) yang tidak
 # ditampilkan di modal — wajib tetap utuh setelah Owner menyimpan modal
 $trap = Call 'PUT' '/api/permissions' @{ users = @{ $staffId = @{ analytics = @('read') } } } $tok
@@ -69,6 +74,10 @@ foreach ($k in @('Nonaktifkan','Wewenang','Hapus')) {
 if ($dom.Contains('Tambah staf')) { Ok 'tombol Tambah staf tampil' } else { Fail 'tombol Tambah staf tidak tampil' }
 if ($dom.Contains('staff-add')) { Ok 'aksi staff-add tersedia di DOM' } else { Fail 'aksi staff-add tidak ada di DOM' }
 if ($dom.Contains('staff-form-toggle')) { Fail 'aksi lama staff-form-toggle masih ada' } else { Ok 'aksi lama staff-form-toggle sudah tidak dipakai' }
+
+# kolom No Telepon: judul kolom tampil & nomor staf terbaca di barisnya
+if ($dom -match 'No Telepon') { Ok 'kolom No Telepon ada di tabel Staf & Role' } else { Fail 'kolom No Telepon tidak ada di tabel Staf & Role' }
+if ($dom.Contains('0812-3456-7890')) { Ok 'nomor telepon staf tampil di barisnya' } else { Fail 'nomor telepon staf tidak tampil di barisnya' }
 
 # ukur warna terhitung tiap tombol staf (harus latar solid + tulisan berlawanan)
 $probe = @'

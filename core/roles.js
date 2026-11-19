@@ -320,16 +320,20 @@ window.RasaRoles = (function () {
       </div>
       <div class="table-wrap"><table class="staff-table">
       <thead id="staffHead"></thead>
-      <tbody id="staffBody"><tr><td colspan="6" class="empty-state">Memuat daftar staf…</td></tr></tbody></table></div>
+      <tbody id="staffBody"><tr><td colspan="7" class="empty-state">Memuat daftar staf…</td></tr></tbody></table></div>
       <div class="hint">Staf baru dapat ditambahkan lewat tombol <b>Tambah staf</b> atau diundang lewat email (panel <b>Undangan staf</b>). Menonaktifkan akun <b>menarik seluruh sesi</b> staf tersebut dan memindahkannya ke tab <b>Akun Nonaktif</b> — data operasional tetap utuh. Menghapus permanen hanya tersedia bagi <b>Owner</b>. Setiap perubahan tercatat di <b>audit log</b> dan langsung berlaku.</div>
     </div>`;
   }
 
   const fmtWhen = ts => (ts ? new Date(ts).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
   const emptyRow = (cols, html) => '<tr><td colspan="' + cols + '" class="empty-state">' + html + '</td></tr>';
+  /* jumlah kolom tiap tab — dipakai colspan supaya pesan kosong/salah
+     selalu membentang penuh (aktif: Nama, Email, No Telepon, Role,
+     Status, Login terakhir, Aksi = 7; nonaktif: 5) */
+  const staffColsOf = tab => (tab === 'inactive' ? 5 : 7);
   const staffHeadOf = tab => tab === 'inactive'
     ? '<tr><th>Nama</th><th>Email</th><th>Role terakhir</th><th>Dinonaktifkan</th><th style="text-align:right">Aksi</th></tr>'
-    : '<tr><th>Nama</th><th>Email</th><th>Role</th><th>Status</th><th>Login terakhir</th><th style="text-align:right">Aksi</th></tr>';
+    : '<tr><th>Nama</th><th>Email</th><th>No Telepon</th><th>Role</th><th>Status</th><th>Login terakhir</th><th style="text-align:right">Aksi</th></tr>';
 
   /* Ringkasan wewenang satu staf (override per staf vs matriks role) */
   function staffPermSummary(u) {
@@ -383,7 +387,7 @@ window.RasaRoles = (function () {
     if (addBtn) addBtn.hidden = !window.canPerm('staff', 'create');
     if (head) head.innerHTML = staffHeadOf(tab);
 
-    if (!state.staff) { body.innerHTML = emptyRow(6, 'Daftar staf belum dimuat.'); return; }
+    if (!state.staff) { body.innerHTML = emptyRow(staffColsOf(tab), 'Daftar staf belum dimuat.'); return; }
 
     const rows = state.staff
       .filter(u => (tab === 'active' ? u.status === 'active' : u.status !== 'active'))
@@ -394,7 +398,7 @@ window.RasaRoles = (function () {
       if (state.staffQuery || state.staffRoleFilter) msg = 'Tidak ada akun yang cocok dengan pencarian/filter Anda.';
       else if (tab === 'inactive') msg = 'Belum ada akun nonaktif — akun yang dinonaktifkan akan muncul di sini beserta tanggal penonaktifannya.';
       else msg = 'Belum ada staf — tambah lewat tombol <b>Tambah staf</b> atau undang calon staf lewat email di panel <b>Undangan staf (Gmail)</b>.';
-      body.innerHTML = emptyRow(6, msg);
+      body.innerHTML = emptyRow(staffColsOf(tab), msg);
       return;
     }
 
@@ -424,7 +428,11 @@ window.RasaRoles = (function () {
           actions.push(`<button class="staff-act is-del" data-action="staff-del:${esc(String(u.id))}" title="Hapus staf ini selamanya"><i>✕</i>Hapus</button>`);
         }
         if (mine) actions.push('<span class="hint-inline">Anda</span>');
+        /* No Telepon = nomor pribadi staf (kolom profil pribadi / telepon
+           di modal Ubah) — otomatis ikut terupdate saat staf mengganti
+           nomornya sendiri lewat Profil pribadi */
         return `<tr><td><b>${esc(u.name || '—')}</b></td><td>${esc(u.email || '')}</td>
+          <td class="col-phone">${u.phone ? esc(u.phone) : '<span class="subcell">—</span>'}</td>
           <td>${roleCell}</td><td><span class="status ready">Aktif</span></td><td>${esc(last)}</td>
           <td style="text-align:right"><div class="staff-actions">${actions.join('')}</div></td></tr>`;
       }
@@ -458,8 +466,45 @@ window.RasaRoles = (function () {
       renderStaff();
     } catch (e) {
       const body = $('staffBody');
-      if (body) body.innerHTML = emptyRow(6, 'Gagal memuat staf: ' + esc(e.message));
+      if (body) body.innerHTML = emptyRow(staffColsOf(state.staffTab), 'Gagal memuat staf: ' + esc(e.message));
     } finally { state.staffLoading = false; }
+  }
+
+  /* ---------- Penyegaran berkala daftar staf ----------
+     Dipanggil bersamaan dengan poll izin (20 detik) supaya kolom
+     **No Telepon** (dan nama/status staf) di panel Staf & Role ikut
+     terupdate otomatis ketika staf mengganti nomor pribadinya lewat
+     Profil pribadi — tanpa owner perlu menyegarkan halaman. Hanya
+     digambar ulang bila datanya benar-benar berbeda (tanpa kedip). */
+  async function syncStaffList() {
+    if (!currentUser() || !window.canPerm('staff', 'read')) return;
+    if (!document.getElementById('staffPanel')) return;
+    if (state.staffLoading) return;
+    try {
+      const res = await window.RasaAPI.get('/api/staff');
+      const items = res.items || [];
+      const counts = res.counts || null;
+      const same = JSON.stringify(items) === JSON.stringify(state.staff || []) &&
+        JSON.stringify(counts) === JSON.stringify(state.staffCounts || null);
+      if (same) return;
+      state.staff = items;
+      state.staffCounts = counts;
+      renderStaff();
+    } catch (e) { /* poll gagal diabaikan — coba lagi pada siklus berikutnya */ }
+  }
+
+  /* Dipanggil app.js setelah Profil pribadi tersimpan (nama / telepon /
+     foto): baris pemilik sesi di tabel Staf & Role diperbarui seketika. */
+  function syncSelfRow(user) {
+    if (!user || !state.staff) return;
+    const me = currentUser();
+    const id = String(user.id || (me && me.id) || '');
+    const row = state.staff.find(x => String(x.id) === id);
+    if (!row) return;
+    ['name', 'phone', 'avatar'].forEach(k => {
+      if (Object.prototype.hasOwnProperty.call(user, k)) row[k] = user[k];
+    });
+    if (document.getElementById('staffBody')) renderStaff();
   }
 
   /* ---------- 4. Preset izin per role (dibaca dari server) ----------
@@ -913,8 +958,16 @@ window.RasaRoles = (function () {
 
   function startPermWatch() {
     if (permTimer) return;
-    permTimer = setInterval(() => { if (!document.hidden) refreshPerms(); }, 20000);
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshPerms(); });
+    permTimer = setInterval(() => {
+      if (document.hidden) return;
+      refreshPerms();
+      syncStaffList();   /* No Telepon / nama staf ikut terupdate otomatis */
+    }, 20000);
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) return;
+      refreshPerms();
+      syncStaffList();
+    });
     window.addEventListener('focus', () => refreshPerms());
     window.addEventListener('rasa:denied', () => refreshPerms(true));
   }
@@ -1024,7 +1077,7 @@ window.RasaRoles = (function () {
     })();
   }
 
-  return { init, applyNav, state, moduleOf };
+  return { init, applyNav, state, moduleOf, syncSelfRow, syncStaffList };
 })();
 
 window.RasaRoles.init();
