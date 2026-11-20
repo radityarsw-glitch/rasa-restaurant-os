@@ -114,7 +114,7 @@ var iv=setInterval(function(){
     if(!panel){ if(n>400) done({error:'panel Profil pribadi tidak tampil', R:R}); return; }
     R.noThemeSelect = !d.getElementById('pfTheme');
     R.noThemeLabel = panel.textContent.indexOf('Tema tampilan pribadi')<0;
-    R.hasSaveBtn = !!q(d,'[data-action="profile-save"]');
+    R.noSaveBtn = !q(d,'[data-action="profile-save"]');
     var phone=d.getElementById('pfPhone'), name=d.getElementById('pfName');
     if(!phone||!name){ done({error:'kolom profil tidak ada', R:R}); return; }
     R.nameBefore=name.value;
@@ -191,7 +191,7 @@ else {
     check(R.deactDateShown === true, 'tanggal penonaktifkan tampil: ' + R.deactDate);
     check(R.noThemeSelect === true, 'field "Tema tampilan pribadi" sudah dihapus (select pfTheme tidak ada)');
     check(R.noThemeLabel === true, 'label "Tema tampilan pribadi" tidak ada di panel profil');
-    check(R.hasSaveBtn === true, 'tombol Simpan profil tersedia');
+    check(R.noSaveBtn === true, 'tombol "Simpan profil" sudah dihapus (penyimpanan sepenuhnya otomatis)');
     check(R.inputKept === true, 'nilai input diterima di kolom profil');
     check(/Profil pribadi/.test(R.toast || ''), 'toast simpan muncul: ' + R.toast);
     check(R.savedName === 'Nama Profil Uji', 'nama profil TERSIMPAN di server: ' + R.savedName);

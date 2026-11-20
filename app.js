@@ -2743,7 +2743,8 @@ function flushProfileSave(){
   const patch=profilePatchFromDom();
   if(patch&&Object.keys(patch).length)saveProfilePatch(patch,'Profil pribadi diperbarui.');
 }
-/* simpan sekarang juga (tombol Simpan profil) — memberi umpan balik pasti */
+/* simpan seketika saat Enter pada kolom nama/telepon — memberi umpan
+   balik pasti; tanpa tombol simpan (penyimpanan sudah otomatis) */
 function profileSaveNow(){
   const patch=profilePatchFromDom();
   if(!patch||!Object.keys(patch).length){toast('Tidak ada perubahan pada profil pribadi Anda.');return}
@@ -2806,10 +2807,6 @@ function profilePanel(){
       <div class="field-row">
         <label class="field"><span>Nama tampilan</span><input class="input" id="pfName" value="${esc(u.name||'')}" maxlength="60" placeholder="Nama Anda" autocomplete="off"></label>
         <label class="field"><span>Nomor telepon pribadi</span><input class="input" id="pfPhone" value="${esc(u.phone||'')}" maxlength="24" placeholder="0812-3456-7890" autocomplete="off"></label>
-      </div>
-      <div class="btn-row" style="margin-top:-2px">
-        <button class="btn btn-primary" data-action="profile-save"><span class="btn-icon">✓</span> Simpan profil</button>
-        <small class="subcell">Perubahan juga tersimpan otomatis ±1 detik setelah Anda berhenti mengetik — tombol ini untuk menyimpan seketika.</small>
       </div>
       <div class="field-row">
         <label class="field"><span>Jabatan (role)</span><input class="input" value="${esc(roleName(u.role))}" disabled><small class="subcell">Diatur oleh Owner lewat halaman Staf &amp; Role — tidak bisa diubah sendiri</small></label>
@@ -3118,7 +3115,6 @@ document.addEventListener('click',e=>{
   if(action==='remove-avatar'){removeAvatar();return}
   /* --- profil pribadi (hanya sesi login milik sendiri) --- */
   if(action==='profile-photo-remove'){removeProfilePhoto();return}
-  if(action==='profile-save'){profileSaveNow();return}
   if(action==='profile-logout-all'){askLogoutAll();return}
   if(action==='profile-logout-all-confirm'){logoutAllConfirmed();return}
   if(action==='booking'){openResForm();return}
