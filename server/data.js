@@ -50,6 +50,9 @@ function validateValue(key, v) {
       if (!isNum(it.stock, 0, 1e9)) return 'stok harus angka 0 ke atas';
       if (!isNum(it.min, 0, 1e9)) return 'stok minimum harus angka 0 ke atas';
       if (!isNum(it.cost, 0, 1e12)) return 'harga satuan tidak valid';
+      /* tanggal kedaluwarsa & nomor batch (opsional) untuk bahan yang butuh */
+      if (it.expiry != null && it.expiry !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(String(it.expiry))) return 'tanggal kedaluwarsa tidak valid';
+      if (it.batch != null && !isStr(String(it.batch), 24)) return 'nomor batch terlalu panjang';
     }
     return null;
   }
@@ -61,12 +64,18 @@ function validateValue(key, v) {
       if (!r || typeof r !== 'object' || Array.isArray(r)) return 'baris resep tidak valid';
       if (!isId(r.id)) return 'id resep tidak valid';
       if (!isId(r.productId)) return 'id produk tidak valid';
+      if (r.yield != null && !isNum(r.yield, 1, 1000)) return 'jumlah porsi tidak valid';
       if (!Array.isArray(r.items)) return 'daftar bahan tidak valid';
       if (r.items.length > 100) return 'maksimal 100 bahan per resep';
       for (const it of r.items) {
         if (!it || typeof it !== 'object') return 'baris bahan resep tidak valid';
-        if (!isId(it.invId)) return 'id bahan tidak valid';
+        /* bahan = bahan persediaan (invId) ATAU sub-resep produk lain (sub) */
+        const hasInv = typeof it.invId === 'string' && it.invId.length >= 1 && it.invId.length <= 40;
+        const hasSub = typeof it.sub === 'string' && it.sub.length >= 1 && it.sub.length <= 40;
+        if (!hasInv && !hasSub) return 'bahan resep tidak valid';
         if (!isNum(it.qty, 0.000001, 1e6)) return 'takaran harus angka lebih dari 0';
+        if (it.u != null && !isStr(String(it.u), 10)) return 'satuan takaran tidak valid';
+        if (it.v != null && !isStr(String(it.v), 30)) return 'varian tidak valid';
       }
     }
     return null;
@@ -83,6 +92,131 @@ function validateValue(key, v) {
       if (!isStr(e.kind == null ? '' : String(e.kind), 12)) return 'jenis log tidak valid';
       if (!isStr(e.day == null ? '' : String(e.day), 12)) return 'tanggal log tidak valid';
       if (e.cost != null && !isNum(e.cost, 0, 1e12)) return 'nilai log tidak valid';
+      if (e.note != null && !isStr(String(e.note), 60)) return 'catatan log terlalu panjang';
+      if (e.before != null && !isNum(e.before, 0, 1e9)) return 'stok sebelum tidak valid';
+      if (e.after != null && !isNum(e.after, 0, 1e9)) return 'stok sesudah tidak valid';
+      if (e.by != null && !isStr(String(e.by), 60)) return 'pelaku perubahan tidak valid';
+    }
+    return null;
+  }
+
+  /* ---------- Pengadaan: pemasok, permintaan beli (PR), purchase order (PO) ----------
+     Stok HANYA bertambah lewat penerimaan barang di PO — bukan saat PO dibuat. */
+  if (key === 'suppliers') {
+    if (!Array.isArray(v)) return 'harus berupa daftar';
+    if (v.length > 500) return 'maksimal 500 pemasok';
+    for (const s of v) {
+      if (!s || typeof s !== 'object' || Array.isArray(s)) return 'baris pemasok tidak valid';
+      if (!isId(s.id)) return 'id pemasok tidak valid';
+      if (typeof s.name !== 'string' || !s.name.trim() || s.name.length > 60) return 'nama pemasok tidak valid';
+      if (s.contact != null && !isStr(String(s.contact), 60)) return 'nama kontak terlalu panjang';
+      if (s.phone != null && !isStr(String(s.phone), 24)) return 'telepon pemasok tidak valid';
+      if (s.address != null && !isStr(String(s.address), 90)) return 'alamat terlalu panjang';
+      if (s.note != null && !isStr(String(s.note), 160)) return 'catatan terlalu panjang';
+      if (s.items != null) {
+        if (!Array.isArray(s.items) || s.items.length > 300) return 'daftar harga pemasok tidak valid';
+        for (const p of s.items) {
+          if (!p || typeof p !== 'object' || Array.isArray(p)) return 'harga pemasok tidak valid';
+          if (!isId(p.invId)) return 'id bahan pada harga pemasok tidak valid';
+          if (!isNum(p.price, 0, 1e12)) return 'harga pemasok tidak valid';
+        }
+      }
+    }
+    return null;
+  }
+
+  if (key === 'purchaseRequests') {
+    if (!Array.isArray(v)) return 'harus berupa daftar';
+    if (v.length > 500) return 'maksimal 500 permintaan pembelian';
+    for (const p of v) {
+      if (!p || typeof p !== 'object' || Array.isArray(p)) return 'permintaan pembelian tidak valid';
+      if (!isId(p.id)) return 'id permintaan tidak valid';
+      if (p.no != null && !isStr(String(p.no), 24)) return 'nomor permintaan tidak valid';
+      if (p.date != null && !isStr(String(p.date), 12)) return 'tanggal permintaan tidak valid';
+      if (p.status != null && !isStr(String(p.status), 16)) return 'status permintaan tidak valid';
+      if (!Array.isArray(p.items) || !p.items.length || p.items.length > 100) return 'daftar barang permintaan tidak valid';
+      for (const it of p.items) {
+        if (!it || typeof it !== 'object' || Array.isArray(it)) return 'barang permintaan tidak valid';
+        if (!isId(it.invId)) return 'id bahan pada permintaan tidak valid';
+        if (!isNum(it.qty, 0.000001, 1e9)) return 'jumlah barang tidak valid';
+        if (it.price != null && !isNum(it.price, 0, 1e12)) return 'estimasi harga tidak valid';
+      }
+      if (p.note != null && !isStr(String(p.note), 200)) return 'catatan permintaan terlalu panjang';
+      if (p.by != null && !isStr(String(p.by), 60)) return 'nama pemohon tidak valid';
+      if (p.approver != null && !isStr(String(p.approver), 60)) return 'nama penyetuju tidak valid';
+      if (p.decidedAt != null && !isNum(p.decidedAt, 0, 4e12)) return 'waktu keputusan tidak valid';
+    }
+    return null;
+  }
+
+  if (key === 'purchaseOrders') {
+    if (!Array.isArray(v)) return 'harus berupa daftar';
+    if (v.length > 500) return 'maksimal 500 purchase order';
+    for (const po of v) {
+      if (!po || typeof po !== 'object' || Array.isArray(po)) return 'purchase order tidak valid';
+      if (!isId(po.id)) return 'id PO tidak valid';
+      if (po.no != null && !isStr(String(po.no), 24)) return 'nomor PO tidak valid';
+      if (po.date != null && !isStr(String(po.date), 12)) return 'tanggal PO tidak valid';
+      if (po.status != null && !isStr(String(po.status), 16)) return 'status PO tidak valid';
+      if (po.supplierId != null && !isStr(String(po.supplierId), 40)) return 'id pemasok tidak valid';
+      if (po.supplierName != null && !isStr(String(po.supplierName), 60)) return 'nama pemasok tidak valid';
+      if (po.prId != null && !isStr(String(po.prId), 40)) return 'id permintaan tidak valid';
+      if (!Array.isArray(po.items) || !po.items.length || po.items.length > 100) return 'daftar barang PO tidak valid';
+      for (const it of po.items) {
+        if (!it || typeof it !== 'object' || Array.isArray(it)) return 'barang PO tidak valid';
+        if (!isId(it.invId)) return 'id bahan pada PO tidak valid';
+        if (it.name != null && !isStr(String(it.name), 60)) return 'nama barang terlalu panjang';
+        if (it.unit != null && !isStr(String(it.unit), 10)) return 'satuan barang tidak valid';
+        if (!isNum(it.qty, 0.000001, 1e9)) return 'jumlah dipesan tidak valid';
+        if (it.recv != null && !isNum(it.recv, 0, 1e9)) return 'jumlah diterima tidak valid';
+        if (it.rej != null && !isNum(it.rej, 0, 1e9)) return 'jumlah ditolak tidak valid';
+        if (it.price != null && !isNum(it.price, 0, 1e12)) return 'harga beli tidak valid';
+        if (it.rejects != null) {
+          if (!Array.isArray(it.rejects) || it.rejects.length > 50) return 'riwayat penolakan tidak valid';
+          for (const rj of it.rejects) {
+            if (!rj || typeof rj !== 'object') return 'riwayat penolakan tidak valid';
+            if (!isNum(rj.qty, 0.000001, 1e9)) return 'jumlah ditolak tidak valid';
+            if (rj.reason != null && !isStr(String(rj.reason), 80)) return 'alasan penolakan terlalu panjang';
+          }
+        }
+      }
+      if (po.total != null && !isNum(po.total, 0, 1e13)) return 'total PO tidak valid';
+      if (po.payments != null) {
+        if (!Array.isArray(po.payments) || po.payments.length > 300) return 'riwayat pembayaran tidak valid';
+        for (const pay of po.payments) {
+          if (!pay || typeof pay !== 'object' || Array.isArray(pay)) return 'pembayaran tidak valid';
+          if (!isNum(pay.amount, 0, 1e13)) return 'nilai pembayaran tidak valid';
+          if (pay.method != null && !isStr(String(pay.method), 24)) return 'metode pembayaran tidak valid';
+          if (pay.by != null && !isStr(String(pay.by), 60)) return 'nama pelaku pembayaran tidak valid';
+          if (pay.t != null && !isNum(pay.t, 0, 4e12)) return 'waktu pembayaran tidak valid';
+        }
+      }
+      if (po.invoice != null) {
+        if (typeof po.invoice !== 'object' || Array.isArray(po.invoice)) return 'invoice tidak valid';
+        if (po.invoice.no != null && !isStr(String(po.invoice.no), 40)) return 'nomor invoice terlalu panjang';
+        if (po.invoice.date != null && !isStr(String(po.invoice.date), 12)) return 'tanggal invoice tidak valid';
+        if (po.invoice.amount != null && !isNum(po.invoice.amount, 0, 1e13)) return 'nilai invoice tidak valid';
+      }
+      if (po.createdBy != null && !isStr(String(po.createdBy), 60)) return 'pembuat PO tidak valid';
+      if (po.approvedBy != null && !isStr(String(po.approvedBy), 60)) return 'penyetuju PO tidak valid';
+      if (po.receivedBy != null && !isStr(String(po.receivedBy), 60)) return 'penerima PO tidak valid';
+    }
+    return null;
+  }
+
+  /* ---------- Riwayat resep: perubahan komposisi tidak mengubah
+     perhitungan transaksi penjualan lama (COGS disimpan per pesanan) ---------- */
+  if (key === 'recipeLog') {
+    if (!Array.isArray(v)) return 'harus berupa daftar';
+    if (v.length > 500) return 'maksimal 500 riwayat resep';
+    for (const e of v) {
+      if (!e || typeof e !== 'object' || Array.isArray(e)) return 'riwayat resep tidak valid';
+      if (!isId(e.id)) return 'id riwayat resep tidak valid';
+      if (!isId(e.productId)) return 'id produk tidak valid';
+      if (!isNum(e.t, 0, 4e12)) return 'waktu riwayat tidak valid';
+      if (!Array.isArray(e.items) || e.items.length > 100) return 'daftar bahan riwayat tidak valid';
+      if (e.by != null && !isStr(String(e.by), 60)) return 'nama pengubah resep tidak valid';
+      if (e.note != null && !isStr(String(e.note), 80)) return 'catatan resep terlalu panjang';
     }
     return null;
   }

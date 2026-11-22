@@ -23,7 +23,8 @@ window.RasaSync = (function () {
     'avatar', 'lat', 'lng', 'accounts', 'theme', 'isOpen',
     'restoAddress', 'restoPhone', 'restoEmail', 'restoWebsite', 'restoSocial',
     'orders', 'archive', 'products', 'reservations',
-    'inventory', 'recipes', 'stockLog', 'accounting'
+    'inventory', 'recipes', 'stockLog', 'accounting',
+    'recipeLog', 'suppliers', 'purchaseOrders', 'purchaseRequests'
   ];
 
   /* Key identitas restoran hanya ditulis oleh sesi Owner — sisanya tidak

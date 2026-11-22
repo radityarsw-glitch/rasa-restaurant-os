@@ -179,8 +179,11 @@ Struk pembayaran untuk pelanggan, dibuka lewat modul `core/receipt.js` — **sat
 - Workspace **Antar Ke Meja** (acc & antar pesanan)
 - Reservasi meja: pilihan meja & menu, deteksi bentrok jadwal, kapasitas tamu, hitung mundur live, **status penyajian pesanan terhubung di kartu jadwal**, konfirmasi, dan riwayat pembatalan
 - Katalog menu
-- Persediaan dan pengadaan bahan baku
-- Keuangan, Chart of Accounts, jurnal double-entry, audit trail, dan laporan
+- **Persediaan bahan baku**: daftar bahan lengkap (nama, kategori, stok, satuan, harga beli, nilai stok, status), stok minimum + peringatan menipis otomatis, tanggal kedaluwarsa & nomor batch, riwayat setiap perubahan stok beserta **sumber transaksinya** (pembelian, pemakaian resep, rusak/kedaluwarsa, koreksi, opname), penyesuaian dengan alasan per mode (opname/masuk/keluar), dan stok opname massal
+- **Resep / BOM**: komposisi bahan per menu (termasuk **sub-resep** produk lain dan bahan khusus **varian**), jumlah porsi per batch, HPP per porsi, laba kotor, food cost % berwarna, serta **riwayat resep** — penjualan lama memakai snapshot COGS-nya sendiri sehingga tidak pernah dihitung ulang; harga beli berubah → seluruh HPP ikut terbarui
+- **Pengadaan**: pemasok + daftar harga per bahan → permintaan beli (PR) → persetujuan → purchase order → penerimaan barang (**sebagian** diperbolehkan, barang rusak dicatat sebagai penolakan dan **tidak** menambah stok) → invoice → status pembayaran (belum/bayar sebagian/lunas). **Stok hanya bertambah saat barang diterima**, tidak pernah saat PO dibuat; setiap keputusan menyimpan pelaku & waktunya
+- **Keuangan**: pendapatan, HPP/COGS, beban operasional, laba bersih, saldo kas (1100) & bank/QRIS (1110), utang pemasok (2100) + pembayaran utang, jurnal double-entry (penjualan, HPP, penerimaan & pembayaran pengadaan tercatat otomatis; beban manual), filter tanggal/kategori/metode, dan ekspor CSV
+- **Laporan**: Penjualan, Persediaan, HPP/Resep, Pengadaan, Keuangan — seluruh angka dihitung dari transaksi nyata dengan filter harian/mingguan/bulanan/tahunan/semua (atau rentang kustom), grafik batang, **drill-down** ke transaksi sumbernya, dan ekspor CSV
 - **Struk pelanggan**: pratinjau, cetak thermal 58/80 mm, unduh PDF, bagikan WhatsApp/email, QR verifikasi, dan buka lagi dari riwayat pesanan
 
 ## Pesanan di Menu: pilih varian & pembayaran
@@ -264,7 +267,7 @@ git push -u origin main                 :: GitHub Actions otomatis build & deplo
 
 ### Pengujian otomatis
 
-Enam skrip pengujian dijalankan terhadap `wrangler dev --port 8790 --local` (D1 lokal):
+Sepuluh skrip pengujian dijalankan terhadap `wrangler dev --port 8790 --local` (D1 lokal) — enam `.ps1` (PowerShell) dan empat `.mjs` (Node + Chrome headless):
 
 - `.uji-permisi.ps1` — 13 skenario API permission: cabut/kembalikan wewenang per staf (tanpa menyentuh staf lain), validasi ketat modul & aksi, data tetap utuh, tulis & API permission ditolak, preset per role berlaku langsung, serta modul **Antar Ke Meja** (dipilih di Wewenang) sebagai izin alternatif menulis pesanan.
 - `.uji-frontend.ps1` — uji headless Chrome: DOM badge status jadwal, foto `object-fit: contain`, menu/halaman ditolak saat wewenang dicabut, notifikasi pencabutan langsung saat halaman terbuka (poll izin 20 detik), serta data tetap terkirim ke staf yang dicabut.
@@ -272,10 +275,12 @@ Enam skrip pengujian dijalankan terhadap `wrangler dev --port 8790 --local` (D1 
 - `.uji-staf.ps1` — uji headless Chrome dengan sesi login sungguhan: panel Staf &amp; role tampil lengkap (Nonaktifkan, Wewenang, Hapus, Tambah staf) beserta **kolom No Telepon** yang menampilkan nomor staf, warna enam varian tombol staf (termasuk **Aktifkan**/**Hapus** menyala) diukur di 6 tema (36 pemeriksaan, ambang 4.5:1), serta modal **Wewenang** terbuka **terkelompok & dipersempit** (14 modul inti dalam 5 seksi, modul lanjutan tidak tampil) tetap memuat centang **Antar Ke Meja** sesuai preset role.
 - `.uji-undangan.ps1` — 25+ pemeriksaan alur **undangan staf via Gmail**: undangan dibuat `pending` dengan peran benar, validasi email/role/duplikat, undangan orang lain tidak bocor di `/mine`, notifikasi tampil setelah calon staf mendaftar dengan email yang diundang, pemilik lain ditolak (403), **Terima** menjadikan staf aktif dengan izin role waiter, **Tolak** tanpa keanggotaan, proses ganda ditolak (409), pembatalan oleh owner, dan seluruh alur tercatat di audit log.
 - `.uji-pesanan-staf.ps1` — 25 pemeriksaan **pemesanan menu oleh staf** (API + headless Chrome): preset `kasir` (`orders:update`, `pos:create`, `reservations:update`, `menu` read-only), Kasir memesan produk **bervarian** dari Menu aktif — pilih varian Large → keranjang → bayar — tanpa satu pun toast “tidak punya izin” (dulu seluruh produk bervarian terblokir), struk memakai harga varian, pesanan tercatat di server dan terlihat oleh Owner, tombol mati (Tambah menu, ✎, Kosongkan) tersembunyi, serta uji negatif: staf tanpa izin Pesanan/Antar ditolak di depan dengan pesan jelas.
+- `.uji-operasional.mjs` — 30 pemeriksaan **modul operasional** (API + Chrome headless): validasi ketat kunci baru (`inventory` expiry/batch, `recipes` yield/varian, `suppliers`, `purchaseRequests`, `purchaseOrders`, `recipeLog`) — data rusak ditolak server, kasir **ditolak** menulis kunci pengadaan, **stok tetap 10 setelah PO dibuat** (belum diterima), lalu alur nyata di UI: tambah pemasok → ajukan PR → setujui → jadi PO → terima barang → **stok bertambah tepat 5**; plus halaman Keuangan (Utang pemasok, kartu Kas/Bank) dan Laporan (5 jenis laporan, bebas angka contoh statis) ikut terverifikasi render.
+- `.uji-e2e.mjs`, `.uji-settings.mjs`, `.uji-ui.mjs` — regresi API & UI: penonaktifan staf (sesi dicabut), profil pribadi tersimpan, modul Pengaturan selalu terbuka bagi staf, serta tombol staff glow & kolom No Telepon.
 
 Folder aset yang disajikan `wrangler dev` bisa dioverride lewat variabel lingkungan `RASA_ASSETS` (default: `%TEMP%\rasa-assets`).
 
-Selain enam skrip di atas, struk pelanggan juga diuji otomatis terhadap frontend statis: matriks QR dibandingkan byte-per-byte dengan pustaka `qrcode` (Python) untuk versi 3/5/7/10, PDF struk divalidasi dengan `pypdf` (halaman 80 mm, isi & margin), serta uji headless Chrome 55 pemeriksaan (buka struk dari riwayat, isi struk = data transaksi, cetak 58/80 mm, `@media print`, PDF, kontak Pengaturan, alur bayar tanpa kolom diskon & uang diterima — keduanya dihapus dari modal pembayaran, tampilan 390 px, nol exception JavaScript).
+Selain skrip di atas, struk pelanggan juga diuji otomatis terhadap frontend statis: matriks QR dibandingkan byte-per-byte dengan pustaka `qrcode` (Python) untuk versi 3/5/7/10, PDF struk divalidasi dengan `pypdf` (halaman 80 mm, isi & margin), serta uji headless Chrome 55 pemeriksaan (buka struk dari riwayat, isi struk = data transaksi, cetak 58/80 mm, `@media print`, PDF, kontak Pengaturan, alur bayar tanpa kolom diskon & uang diterima — keduanya dihapus dari modal pembayaran, tampilan 390 px, nol exception JavaScript).
 
 ## Batasan
 

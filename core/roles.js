@@ -110,7 +110,7 @@ window.RasaRoles = (function () {
   const MODULE_KEYS = {
     pos: ['cart'], orders: ['orders', 'archive'], kitchen: ['kitchen'], tables: ['tables'],
     reservations: ['reservations'], menu: ['products'], inventory: ['inventory', 'stockLog'],
-    recipes: ['recipes'], procurement: ['suppliers', 'purchaseOrders'], staff: ['staff'],
+    recipes: ['recipes', 'recipeLog'], procurement: ['suppliers', 'purchaseOrders', 'purchaseRequests'], staff: ['staff'],
     shifts: ['shifts'], customers: ['customers'], finance: ['finance'],
     accounting: ['accounting', 'journal', 'ledger'], reports: ['reports'], analytics: ['analytics'],
     alerts: ['alerts'], audit: ['audit'], settings: ['restaurantName', 'restaurantLocation', 'brandName',

@@ -3214,3 +3214,27 @@ img{height:auto}
   .stat-value{font-size:16px}
   .page-content{padding-left:10px;padding-right:10px}
 }
+
+/* ---------- Alat riwayat stok (Persediaan) ---------- */
+.inv-log-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:0 16px 12px}
+.inv-log-tools .filter-chip{min-height:30px;padding:6px 11px;font-size:12px}
+.inv-log-tools .input-sm{margin-left:auto;min-width:210px;flex:1 1 210px;max-width:280px}
+@media(max-width:640px){.inv-log-tools .input-sm{margin-left:0;max-width:none}}
+
+/* ---------- Baris resep: bahan + takaran + varian + biaya ---------- */
+.bom-row.bom-row-v{grid-template-columns:minmax(0,1fr) 84px 46px 130px auto auto}
+.bom-row.bom-row-v .bom-cost{text-align:right;white-space:nowrap}
+@media(max-width:760px){
+  .bom-row.bom-row-v{grid-template-columns:minmax(0,1fr) 74px auto;row-gap:4px}
+  .bom-row.bom-row-v select{grid-column:span 2}
+}
+
+/* ---------- Laporan: batang grafik + baris filter tanggal ---------- */
+.filter-inline{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--muted)}
+.filter-inline .input-sm{width:auto;min-width:150px;margin-left:0;flex:0 0 auto}
+.rep-chart{display:flex;align-items:flex-end;gap:6px;height:190px;padding:14px 16px 8px;overflow-x:auto}
+.rep-bar{flex:1 1 0;min-width:34px;max-width:70px;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px}
+.rep-bar i{display:block;width:100%;min-height:3px;border-radius:6px 6px 2px 2px;background:linear-gradient(180deg,var(--gold,#c79a44) 0%,#a97c2c 100%);transition:.25s ease}
+.rep-bar:hover i{filter:brightness(1.12);transform:translateY(-2px)}
+.rep-bar span{font-size:10px;color:var(--muted);font-weight:700;white-space:nowrap}
+@media(max-width:640px){.rep-chart{height:150px}.rep-bar span{font-size:9px}}
