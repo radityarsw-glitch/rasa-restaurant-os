@@ -155,6 +155,7 @@ function toast(d){var t=q(d,'#toast');return t?(t.textContent||''):''}
 function gotoPage(d,p){var b=all(d,'[data-page="'+p+'"]')[0];if(!b)return false;b.click();return true}
 var iv=setInterval(function(){
   n++;
+  if(n>450){ try{ R.diag={step:step, toast:(document.getElementById('toast')||{}).textContent||'', hasPay:!!document.getElementById('poPayAmount'), payVal:(document.getElementById('poPayAmount')||{}).value||'', modal:((document.querySelector('.modal')||{}).textContent||'').slice(0,300) } }catch(e){} done({error:'timeout di step '+step, step:step, R:R, n:n}); return }
   var d=null; try{d=f.contentDocument}catch(e){}
   if(!d){ if(n>300) done({error:'iframe tidak bisa dibuka',n:n}); return; }
   if(step===0){
@@ -325,21 +326,77 @@ var iv=setInterval(function(){
   }
   if(step===22){
     R.repFinRendered = d.body.textContent.indexOf('Buku besar periode')>=0;
-    done(R);
+    /* --- pembayaran utang pemasok DIMULAI dari halaman Keuangan (regresi fix) --- */
+    if(!gotoPage(d,'finance')){ done({error:'kembali ke Keuangan gagal',R:R}); return }
+    step=23; return;
+  }
+  /* hati-hati: ini di dalam template literal .mjs — backslash (\d dst) akan
+     hilang saat dirender, jadi gunakan pola tanpa escape sama sekali. */
+  function pnum(s){
+    var str=String(s||'').replace(/[^0-9.,-]/g,''); /* buang "Rp", spasi, dll */
+    var pts=str.split('.');
+    if(pts.length>1) str=pts.join('');               /* titik = pemisah ribuan */
+    str=str.split(',').join('.');                    /* koma = desimal */
+    var v=parseFloat(str);
+    return isNaN(v)?NaN:v;
+  }
+  function statCard(dd,label){var cs=all(dd,'.stat-card');for(var i=0;i<cs.length;i++){var t=cs[i].querySelector('.stat-top');if(t&&t.textContent.indexOf(label)===0)return cs[i]}return null}
+  function statVal(dd,label){var c=statCard(dd,label);var v=c&&c.querySelector('.stat-value');return v?v.textContent.trim():''}
+  function statFoot(dd,label){var c=statCard(dd,label);var v=c&&c.querySelector('.stat-foot');return v?v.textContent.trim():''}
+  if(step===23){
+    var hf=txt(d,'.page-heading h1');
+    if(hf!=='Keuangan & akuntansi'){ if(n>3100) done({error:'buka Keuangan (pembayaran utang) gagal',h:hf,R:R}); return }
+    R.utangBefore=statVal(d,'Utang pemasok');
+    R.kasBefore=statVal(d,'Kas');
+    R.bebanBefore=statVal(d,'Beban operasional');
+    R.journalBefore=statFoot(d,'Pendapatan');
+    var btn=all(d,'[data-action^="po-pay:"]')[0];
+    if(!btn){ if(n>3200) done({error:'tombol Bayar utang tidak ada di Keuangan',R:R}); return }
+    var rw=btn.closest?btn.closest('tr'):null;
+    R.dueTxt=(rw&&rw.children[4])?rw.children[4].textContent.trim():'';
+    R.due=pnum(R.dueTxt);
+    btn.click(); step=24; return;
+  }
+  if(step===24){
+    if(!q(d,'#poPayAmount')){ if(n>3400){ R.toast=toast(d); done({error:'modal pembayaran utang TIDAK terbuka dari halaman Keuangan',R:R}) } return }
+    R.payModalOpened=true;
+    setVal(q(d,'#poPayAmount'), String(R.due));
+    var pm=q(d,'#poPayMethod'); if(pm) setVal(pm,'Tunai');
+    var payBtn=q(d,'.modal [data-action^="po-pay:"]');
+    if(!payBtn||payBtn.disabled){ done({error:'tombol Catat pembayaran tidak aktif',R:R,hasBtn:!!payBtn,disabled:payBtn?payBtn.disabled:null}); return }
+    payBtn.click(); step=25; return;
+  }
+  if(step===25){
+    var t=toast(d);
+    R.lastToast=t;
+    if(/tercatat/.test(t)){ R.paySaved=true; R.payToast=t; step=26; return }
+    if(n>3700){ R.payToast=t; done({error:'pembayaran utang tidak tersimpan',R:R}); return }
     return;
   }
+  if(step===26){
+    R.stillFinance = txt(d,'.page-heading h1')==='Keuangan & akuntansi';
+    R.utangAfter=statVal(d,'Utang pemasok');
+    R.kasAfter=statVal(d,'Kas');
+    R.bebanAfter=statVal(d,'Beban operasional');
+    R.journalAfter=statFoot(d,'Pendapatan');
+    var rowsTxt=all(d,'table').map(function(tb){return Array.prototype.slice.call(tb.querySelectorAll('tr')).map(function(tr){return tr.textContent}).join(' // ')}).join(' // ');
+    R.hasPayJournal = rowsTxt.indexOf('Utang usaha')>=0;
+    done(R); return;
+  }
+if(n%20===0){try{document.getElementById('out').textContent='PROGRESS step='+step+' n='+n}catch(e){}}
 },200);
 </script>`;
 
 const file = join(process.cwd(), 'test-uji-operasional.html');
 writeFileSync(file, page, 'utf8');
+try { writeFileSync(join(process.env.TEMP || '.', 'ops-page.html'), page, 'utf8') } catch (e) {}
 const prof = mkdtempSync(join(tmpdir(), 'ops-'));
 let dom = '';
 try {
   dom = execFileSync(chrome, [
     '--headless=new', '--disable-gpu', '--no-first-run', '--no-sandbox',
-    '--user-data-dir=' + prof, '--virtual-time-budget=90000', '--dump-dom', base + '/test-uji-operasional.html'
-  ], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, timeout: 120000 });
+    '--user-data-dir=' + prof, '--virtual-time-budget=120000', '--dump-dom', base + '/test-uji-operasional.html'
+  ], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, timeout: 240000 });
 } catch (e) {
   console.log('Chrome gagal: ' + String(e.message).slice(0, 400));
 }
@@ -358,7 +415,7 @@ else {
   let R = null;
   try { R = JSON.parse(unesc(m[1]).trim()) } catch (e) { bad('hasil bukan JSON: ' + unesc(m[1]).slice(0, 600)) }
   if (R) {
-    if (R.error) bad('error alur: ' + R.error);
+    if (R.error) bad('error alur: ' + R.error + (R.step != null ? ' (step ' + R.step + ')' : '') + ' | ' + JSON.stringify(R.R || R || {}).slice(0, 2500));
     check(R.heading === 'Pengadaan bahan baku', 'halaman Pengadaan render: ' + R.heading);
     check(R.noFakePo === true, 'data contoh PO palsu sudah tidak ada');
     check(R.supSaved === true, 'pemasok tersimpan via UI: ' + (R.supToast || ''));
@@ -382,6 +439,23 @@ else {
     check(R.repHasChips >= 5, '5 jenis laporan tersedia (' + R.repHasChips + ' chip)');
     check(R.repInvRendered === true, 'laporan Persediaan render "Mutasi per bahan"');
     check(R.repFinRendered === true, 'laporan Keuangan render "Buku besar periode"');
+    /* --- pembayaran utang dari halaman Keuangan --- */
+    check(R.payModalOpened === true, 'tombol "Bayar →" di Keuangan membuka modal pembayaran: sisa ' + (R.dueTxt || '?'));
+    check(R.paySaved === true, 'pembayaran utang tersimpan: ' + (R.payToast || ''));
+    check(R.stillFinance === true, 'halaman tetap Keuangan setelah bayar (tidak terlempar ke Pengadaan)');
+    const num = s => { const mm = /-?[\d.,]+/.exec(String(s || '')); return mm ? parseFloat(mm[0].replace(/\./g, '').replace(',', '.')) : NaN };
+    const uB = num(R.utangBefore), uA = num(R.utangAfter), kB = num(R.kasBefore), kA = num(R.kasAfter);
+    check(isFinite(uB) && uB > 0 && isFinite(uA) && Math.abs(uA) < 1,
+      'utang pemasok LUNAS (' + R.utangBefore + ' -> ' + R.utangAfter + ')');
+    check(isFinite(kB) && isFinite(kA) && Math.abs((kB - kA) - (uB - uA)) < 1,
+      'kas berkurang tepat sebesar pembayaran (' + R.kasBefore + ' -> ' + R.kasAfter + ')');
+    check(R.bebanBefore === R.bebanAfter,
+      'beban operasional TIDAK bertambah — pembayaran utang bukan beban baru: ' + R.bebanBefore + ' -> ' + R.bebanAfter);
+    check(R.hasPayJournal === true, 'jurnal pembayaran tercatat (akun Utang usaha 2100)');
+    const jb = parseInt(String(R.journalBefore || '').replace(/\D/g, ''), 10);
+    const ja = parseInt(String(R.journalAfter || '').replace(/\D/g, ''), 10);
+    check(isFinite(ja) && ja === jb + 1,
+      'jumlah entri jurnal bertambah tepat 1 (' + R.journalBefore + ' -> ' + R.journalAfter + ')');
   }
 }
 

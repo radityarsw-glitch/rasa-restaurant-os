@@ -2214,7 +2214,7 @@ function poRecvSave(id){
   po.receivedBy=actorName();
   saveStore();
   showPo(po);
-  render('procurement',true);
+  render(currentPage,true);
   toast('Penerimaan tersimpan · '+masuk+' bahan masuk stok'+(tolak?' · '+fmtQty(tolak)+' ditolak (stok tidak bertambah)':'')+'.');
 }
 function poInvoiceSave(id){
@@ -2229,12 +2229,20 @@ function poInvoiceSave(id){
   po.invoice={no:no,date:date||dayKey(),amount:Math.round(amt)};
   if(!saveStore()){if(bak)po.invoice=bak;else delete po.invoice;toast('Gagal menyimpan invoice.');return}
   showPo(po);
-  render('procurement',true);
+  render(currentPage,true);
   toast('Invoice tersimpan · sisa utang '+money(poDue(po))+'.');
 }
 function poPaySave(id){
   const po=poById(id);if(!po){toast('PO tidak ditemukan.');return}
   if(!window.canPerm('procurement','update')){toast('Role Anda tidak punya izin mencatat pembayaran.');return}
+  /* Dipanggil dari halaman Keuangan (tombol "Bayar →") tanpa modal detail PO:
+     buka dulu detail PO-nya supaya field pembayaran tersedia — jangan gagal diam-diam. */
+  if(!document.getElementById('poPayAmount')){
+    showPo(po);
+    const el=document.getElementById('poPayAmount');if(el)el.focus();
+    toast('Isi nilai pembayaran pada detail PO '+String(po.no||po.id)+'.');
+    return;
+  }
   const amt=parseAmount(fieldVal('poPayAmount'));
   const method=fieldVal('poPayMethod')||'Tunai';
   if(isNaN(amt)||amt<=0){toast('Nilai pembayaran harus angka lebih dari 0.');return}
@@ -2245,7 +2253,7 @@ function poPaySave(id){
   po.payments.push({amount:Math.round(amt),method:String(method).slice(0,24),by:actorName(),t:Date.now()});
   if(!saveStore()){po.payments.pop();toast('Gagal menyimpan pembayaran.');return}
   showPo(po);
-  render('procurement',true);
+  render(currentPage,true);
   toast('Pembayaran '+money(amt)+' tercatat · sisa utang '+money(poDue(po))+' (utang & kas ikut berkurang).');
 }
 /* ---------- Permintaan beli: pengajuan, persetujuan, jadi PO ---------- */
