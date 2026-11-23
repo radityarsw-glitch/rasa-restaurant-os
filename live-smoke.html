@@ -1,0 +1,23 @@
+<!doctype html><html lang="id"><meta charset="utf-8"><title>live uji</title>
+<pre id="out">pending</pre>
+<script>
+var tok=(location.hash||'').replace(/^#t=/,'');
+try{if(tok)localStorage.setItem('restaurant-os:session',tok);}catch(e){}
+var f=document.createElement('iframe');
+f.style.cssText='position:fixed;left:-5000px;top:0;width:1440px;height:900px';
+f.src='/#overview';
+document.body.appendChild(f);
+var R={pages:[]},step=0;
+var seq=['overview','procurement','finance','reports'];
+var iv=setInterval(function(){
+  var d=null;try{d=f.contentDocument}catch(e){}
+  if(!d)return;
+  var h=d.querySelector('.page-heading h1');
+  if(!h)return;
+  R.pages.push({p:seq[step],t:h.textContent});
+  step++;
+  if(step>=seq.length){ clearInterval(iv); document.getElementById('out').textContent='RESULT:'+JSON.stringify(R); return }
+  var b=d.querySelector('[data-page="'+seq[step]+'"]');
+  if(b)b.click();
+},600);
+</script></html>
