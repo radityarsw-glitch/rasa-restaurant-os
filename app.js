@@ -1073,6 +1073,10 @@ function pushStockLog(invId,qty,kind,ref,cost,extra){
     e.before=Math.max(0,Math.round((e.after-q)*1000)/1000);
   }
   if(extra&&typeof extra==='object')Object.assign(e,extra);
+  /* pelaku wajib tercatat di SEMUA baris log (audit), dan catatan dibatasi
+     60 karakter agar tidak pernah membuat validasi server menolak seluruh log */
+  if(!e.by)e.by=actorName();
+  if(e.note!=null)e.note=String(e.note).slice(0,60);
   store.stockLog.push(e);
   if(store.stockLog.length>500)store.stockLog=store.stockLog.slice(-500);
 }
@@ -1100,6 +1104,64 @@ function convLabel(qty,unit){
   if(!pair)return '';
   const alt=n*pair[1];
   return '≈ '+fmtQty(alt)+' '+pair[0];
+}
+/* ---------- Konversi satuan saat satuan bahan diubah ----------
+   Setiap angka yang dinyatakan dalam satuan bahan (stok, minimum, harga beli,
+   takaran resep, qty PR/PO, harga pemasok) harus ikut dikonversi — kalau tidak,
+   "10 kg" diam-diam menjadi "10 g" dan seluruh nilai persediaan salah. */
+const UNIT_DIM={ /* satuan → [dimensi, faktor ke satuan dasar] */
+  mg:['mass',0.001],g:['mass',1],gram:['mass',1],grams:['mass',1],
+  kg:['mass',1000],kilo:['mass',1000],kilogram:['mass',1000],kilograms:['mass',1000],
+  ml:['vol',1],cc:['vol',1],
+  l:['vol',1000],liter:['vol',1000],litre:['vol',1000],liters:['vol',1000],lt:['vol',1000],
+  pcs:['count',1],pc:['count',1],buah:['count',1],butir:['count',1],biji:['count',1],unit:['count',1]
+};
+const unitKey=u=>String(u||'').trim().toLowerCase();
+const unitInfo=u=>UNIT_DIM[unitKey(u)]||null;
+/* pengali dari satuan lama ke satuan baru — null bila tidak sebanding */
+function unitConvert(from,to){
+  const a=unitInfo(from),b=unitInfo(to);
+  if(!a||!b||a[0]!==b[0])return null;
+  return a[1]/b[1];
+}
+const roundQ=v=>Math.round(Number(v)*1e6)/1e6;
+/* Di mana bahan ini dipakai? (resep, permintaan beli, PO, harga pemasok) */
+function invRefs(id){
+  const sid=String(id);
+  const hit=list=>(list||[]).filter(o=>(o.items||[]).some(it=>String(it.invId)===sid)).length;
+  return {
+    recipes:hit(store.recipes),prs:hit(purchaseRequests()),
+    pos:hit(purchaseOrders()),sups:hit(suppliers())
+  };
+}
+/* Ikutkan konversi ke seluruh dokumen yang menyimpan angka dalam satuan bahan:
+   qty × faktor, harga per satuan ÷ faktor (nilai total tetap sama). */
+function convertInvRefs(id,factor,newUnit){
+  const sid=String(id);
+  const scale=(v,f)=>roundQ(Number(v)*f);
+  const price=v=>Math.max(0,Math.round(Number(v)/factor));
+  if(factor!==1){
+    store.recipes.forEach(r=>(r.items||[]).forEach(it=>{
+      if(String(it.invId)===sid&&Number(it.qty)>0)it.qty=scale(it.qty,factor);
+    }));
+    purchaseRequests().forEach(p=>(p.items||[]).forEach(it=>{
+      if(String(it.invId)!==sid)return;
+      if(Number(it.qty)>0)it.qty=scale(it.qty,factor);
+      if(Number(it.price)>0)it.price=price(it.price);
+    }));
+    purchaseOrders().forEach(p=>(p.items||[]).forEach(it=>{
+      if(String(it.invId)!==sid)return;
+      ['qty','recv','rej'].forEach(k=>{if(Number(it[k])>0)it[k]=scale(it[k],factor)});
+      if(Array.isArray(it.rejects))it.rejects.forEach(rj=>{if(Number(rj.qty)>0)rj.qty=scale(rj.qty,factor)});
+      if(Number(it.price)>0)it.price=price(it.price);
+    }));
+    suppliers().forEach(s=>(s.items||[]).forEach(it=>{
+      if(String(it.invId)===sid&&Number(it.price)>0)it.price=price(it.price);
+    }));
+  }
+  if(newUnit)purchaseOrders().forEach(p=>(p.items||[]).forEach(it=>{
+    if(String(it.invId)===sid&&it.unit)it.unit=String(newUnit).slice(0,10);
+  }));
 }
 /* Tanggal periode laporan (harian · mingguan · bulanan · tahunan) */
 function periodRange(kind){
@@ -1247,25 +1309,75 @@ function invFormHtml(id){
     <label class="field"><span>Tanggal kedaluwarsa (opsional)</span><input class="input" type="date" id="invExpiry" value="${esc(x.expiry||'')}"></label>
     <label class="field"><span>Nomor batch (opsional)</span><input class="input" id="invBatch" maxlength="24" placeholder="Contoh: L-2026-0912" value="${esc(x.batch||'')}"></label>
   </div>
-  <div class="hint">Satuan bebas (kg, g, liter, ml, pcs) — setara satuan besar/kecil ditampilkan otomatis di tabel. Harga beli dipakai langsung menghitung HPP resep.</div>
+  <div class="hint">Satuan bebas (kg, g, liter, ml, pcs) — setara satuan besar/kecil ditampilkan otomatis di tabel. Mengubah satuan ikut mengonversi stok, minimum, harga beli, takaran resep, dan qty pengadaan supaya jumlah fisiknya tetap sama. Harga beli dipakai langsung menghitung HPP resep.</div>
   <div class="modal-actions"><button class="btn" data-action="close-modal">Batal</button>
   <button class="btn btn-primary" data-action="save-inv:${esc(id)}">${isNew?'Simpan bahan':'Simpan perubahan'}</button></div>`;
 }
+let invFormId=null,invShownUnit=null;
 function openInvForm(id){
   const perm=id==='new'?'create':'update';
   if(!window.canPerm('inventory',perm)){toast('Role Anda tidak punya izin '+(perm==='create'?'menambah':'mengubah')+' persediaan.');return}
   if(id!=='new'&&!invById(id)){toast('Bahan tidak ditemukan.');return}
   openModal(invFormHtml(id));
+  invFormId=id;
+  const cur=id==='new'?{unit:'kg'}:(invById(id)||{unit:'kg'});
+  invShownUnit=String(cur.unit||'kg');   /* satuan yang berlaku untuk angka di form */
   const n=document.getElementById('invName');if(n)n.focus();
 }
+/* Dipanggil saat satuan diubah: angka stok/minimum/harga ikut dikonversi di layar
+   (WYSIWYG), atau satuan ditolak bila tidak sebanding. Idempoten — aman dipanggil
+   lagi saat menyimpan bila event 'change' belum sempat terjadi. */
+function invUnitChanged(){
+  if(!modalEl)return;
+  const uEl=modalEl.querySelector('#invUnit');if(!uEl)return;
+  const target=String(uEl.value||'').trim();
+  const from=invShownUnit==null?target:invShownUnit;
+  if(unitKey(target)===unitKey(from)){invShownUnit=target;return}
+  const factor=unitConvert(from,target);
+  if(factor==null){
+    /* Satuan tidak sebanding (massa ↔ volum ↔ jumlah / satuan tak dikenal):
+       hanya boleh bila tidak ada angka atau tautan yang perlu ditafsirkan ulang. */
+    const fresh=invFormId==='new';
+    const ref=fresh?{recipes:0,prs:0,pos:0,sups:0}:invRefs(invFormId);
+    const curS=Number(numVal('invStock',0,1e9))||0;
+    const curM=Number(numVal('invMin',0,1e9))||0;
+    const why=[];
+    if(curS>0||curM>0)why.push('stok/minimum masih terisi');
+    if(ref.recipes)why.push('dipakai di '+ref.recipes+' resep');
+    if(ref.prs+ref.pos)why.push('ada permintaan/PO belanja');
+    if(ref.sups)why.push('ada harga pemasok');
+    if(!fresh&&why.length){
+      uEl.value=from;
+      toast('Satuan "'+(target||'-')+'" tidak sebanding dengan "'+from+'" ('+why.join(', ')+') — pilih satuan setara (kg↔g, liter↔ml) atau buat bahan baru.');
+      return;
+    }
+    invShownUnit=target;   /* belum ada angka yang perlu dikonversi */
+    return;
+  }
+  if(factor!==1){
+    const sEl=modalEl.querySelector('#invStock'),mEl=modalEl.querySelector('#invMin'),cEl=modalEl.querySelector('#invCost');
+    const num=el=>{const v=String(el&&el.value||'').trim();return v===''?null:parseAmount(v)};
+    const ns=num(sEl),nm=num(mEl),nc=num(cEl);
+    if(ns!=null&&isFinite(ns))sEl.value=fmtQty(roundQ(ns*factor));
+    if(nm!=null&&isFinite(nm))mEl.value=fmtQty(roundQ(nm*factor));
+    if(nc!=null&&isFinite(nc))cEl.value=fmtQty(Math.max(0,Math.round(nc/factor)));
+  }
+  invShownUnit=target;
+}
+/* Angka dari input form persediaan. Harus memakai parseAmount yang sama dengan
+   parser lain di aplikasi: koma = desimal, titik = pemisah ribuan bila polanya
+   jelas. Cara lama (membuang SEMUA titik) membuat "2,4" jadi 24 dan "1.5" jadi
+   15 — stok lama yang bersifat pecahan salah simpan saat form disimpan ulang. */
 function numVal(id,min,max){
-  const raw=fieldVal(id).replace(/\./g,'').replace(',','.');
+  const raw=fieldVal(id);
   if(raw==='')return null;
-  const n=Number(raw);
+  const n=parseAmount(raw);
   if(!isFinite(n)||n<min||n>max)return NaN;
   return n;
 }
 function saveInv(id){
+  invFormId=id;
+  invUnitChanged();   /* samakan angka form dengan satuan yang dipilih (idempoten) */
   const name=fieldVal('invName');
   if(!name){toast('Nama bahan wajib diisi.');return}
   if(name.length>60){toast('Nama bahan maksimal 60 karakter.');return}
@@ -1299,17 +1411,46 @@ function saveInv(id){
     if(!window.canPerm('inventory','update')){toast('Role Anda tidak punya izin mengubah persediaan.');return}
     const backup=Object.assign({},x);
     const prevStock=Number(x.stock)||0;
+    const prevUnit=String(x.unit||'');
+    const unitChanged=unitKey(unit)!==unitKey(prevUnit);
+    let refBak=null;
+    if(unitChanged){
+      const factor=unitConvert(prevUnit,unit);
+      if(factor==null){
+        /* satuan tidak sebanding — jangan pernah menafsirkan ulang angka lama */
+        const ref=invRefs(id);
+        if(prevStock>0||(Number(x.min)||0)>0||ref.recipes||ref.prs||ref.pos||ref.sups){
+          toast('Satuan tidak bisa diubah dari "'+prevUnit+'" ke "'+unit+'": masih ada stok/minimum atau dokumen (resep, PR/PO, harga pemasok) yang memakai satuan lama.');
+          return;
+        }
+      }else{
+        refBak=JSON.stringify({r:store.recipes,p:store.purchaseOrders,q:store.purchaseRequests,s:store.suppliers});
+        convertInvRefs(id,factor,unit);   /* qty resep/PO ikut, harga per satuan ikut */
+      }
+    }
     Object.assign(x,{name:name,cat:cat,unit:unit,stock:stock,min:min,cost:cost,expiry:expiry,batch:batch});
-    /* mengubah angka stok lewat form = perubahan stok → wajib tercatat di log */
-    const delta=stock-prevStock;
+    /* mengubah angka stok lewat form = perubahan stok → wajib tercatat di log.
+       Bila satuan ikut berubah, selisih dihitung terhadap stok lama yang sudah
+       dikonversi (5 liter → 5000 ml = selisih 0, BUKAN +4995), supaya laporan
+       "masuk" tidak membengkak. Konversi murni tetap dicatat sebagai baris log
+       berjumlah 0 dengan catatan konversi (jejak audit tanpa mengubah angka). */
+    const factor=unitChanged?(unitConvert(prevUnit,unit)||1):1;
+    const delta=roundQ(stock-prevStock*factor);
     let logged=false;
-    if(delta!==0){pushStockLog(x.id,delta,'correction','form bahan',x.cost,{note:'Diubah langsung pada form bahan',by:actorName()});logged=true}
+    if(unitChanged||delta!==0){
+      const note=unitChanged
+        ?('Satuan '+prevUnit+' → '+unit+' · '+fmtQty(prevStock)+' → '+fmtQty(stock)+' '+unit)
+        :'Diubah langsung pada form bahan';
+      pushStockLog(x.id,delta,'correction','form bahan',x.cost,{note:note,by:actorName()});
+      logged=true;
+    }
     if(!saveStore()){
       Object.assign(x,backup);
       if(logged)store.stockLog.pop();
+      if(refBak){const b=JSON.parse(refBak);store.recipes=b.r;store.purchaseOrders=b.p;store.purchaseRequests=b.q;store.suppliers=b.s}
       toast('Gagal menyimpan perubahan.');return
     }
-    toast('Bahan "'+name+'" diperbarui'+(delta!==0?' · stok berubah '+fmtQty(prevStock)+' → '+fmtQty(stock)+' '+unit:'')+'.');
+    toast('Bahan "'+name+'" diperbarui'+(unitChanged?' · satuan '+prevUnit+' → '+unit:'')+(delta!==0?' · stok berubah '+fmtQty(prevStock)+' → '+fmtQty(stock)+' '+unit:'')+'.');
   }
   closeModal();render('inventory',true);
 }
@@ -1323,10 +1464,12 @@ let adjDraft=null;
 function adjPreview(d){
   const x=invById(d.id);if(!x)return '—';
   const cur=Number(x.stock)||0;
-  const raw=String(d.qty==null?'':d.qty).replace(/\./g,'').replace(',','.');
-  const n=raw===''?null:Number(raw);
+  const raw=String(d.qty==null?'':d.qty).trim();
+  const n=raw===''?null:parseAmount(raw);
   const val=(n==null||!isFinite(n))?cur:(d.mode==='in'?cur+n:(d.mode==='out'?cur-n:n));
-  return fmtQty(Math.max(0,Math.round(val*1000)/1000))+' '+x.unit;
+  /* tidak di-clamp ke 0: kalau hasilnya minus, pengguna harus melihatnya
+     sebelum tombol Simpan menolak dengan pesan "stok tidak boleh negatif" */
+  return fmtQty(Math.round(val*1000)/1000)+' '+x.unit;
 }
 function invAdjustHtml(){
   const d=adjDraft;
@@ -1416,9 +1559,9 @@ function saveInvOpname(){
   inputs.forEach(el=>{
     const i=parseInt(el.getAttribute('data-opname'),10);
     const x=store.inventory[i];if(!x)return;
-    const raw=String(el.value||'').replace(/\./g,'').replace(',','.');
+    const raw=String(el.value||'').trim();
     if(raw==='')return;
-    const n=Number(raw);
+    const n=parseAmount(raw);
     if(!isFinite(n)||n<0){bad=bad||(x.name+': angka tidak valid');return}
     const cur=Number(x.stock)||0;
     if(Math.abs(n-cur)<1e-9)return;
@@ -1745,11 +1888,26 @@ function applyBom(order){
     bomUsage(r,qty,d.variant||'').forEach(u=>{
       const x=invById(u.invId);if(!x)return;
       if(u.qty<=0)return;
-      x.stock=Math.max(0,Math.round(((Number(x.stock)||0)-u.qty)*1000)/1000);
-      pushStockLog(x.id,u.qty,'bom',order.id,x.cost);
-      cogs+=u.qty*(Number(x.cost)||0);
-      const hit=snap.find(s=>String(s.invId)===String(u.invId));
-      if(hit)hit.qty+=u.qty;else snap.push({invId:String(u.invId),qty:u.qty});
+      /* KEBIJAKAN STOK NEGATIF: pemotongan tidak pernah membuat stok di bawah 0.
+         Yang dicatat adalah yang benar-benar terpotong (sebersedia stok), supaya
+         before → sesudah di riwayat selalu cocok dan pembatalan pesanan hanya
+         mengembalikan jumlah yang memang sempat dipotong. Sisa kebutuhan dicatat
+         sebagai catatan pada baris log supaya selisihnya tetap terlacak. */
+      const before=Number(x.stock)||0;
+      const take=Math.max(0,Math.min(u.qty,before));
+      const after=Math.round((before-take)*1000)/1000;
+      const lack=Math.round((u.qty-take)*1000)/1000;
+      x.stock=after;
+      if(take>0){
+        pushStockLog(x.id,-take,'bom',order.id,x.cost,
+          {note:lack>0?('Kurang '+fmtQty(lack)+' '+x.unit+' · dipakai sebersedia'):''});
+        cogs+=take*(Number(x.cost)||0);
+        const hit=snap.find(s=>String(s.invId)===String(u.invId));
+        if(hit)hit.qty+=take;else snap.push({invId:String(u.invId),qty:take});
+      }else{
+        pushStockLog(x.id,0,'bom',order.id,x.cost,
+          {note:'Stok habis · kebutuhan '+fmtQty(lack)+' '+x.unit+' tidak terpenuhi'});
+      }
       touched=true;
     });
   });
@@ -4672,7 +4830,7 @@ const ACTION_PERM={
   'start-prep:':['orders','update'],'mark-ready:':['orders','update'],'cancel-order:':['orders','update'],'confirm-cancel-order:':['orders','update'],
   'deliver-start:':['orders|antar','update'],'serve-order:':['orders|antar','update'],'deliver-done:':['orders|antar','update'],'start-prep':['orders','update'],
   'clear-orders':['orders','delete'],'confirm-clear-orders':['orders','delete'],
-  'inv-add':['inventory','create'],'inv-edit:':['inventory','update'],'inv-adjust:':['inventory','update'],'save-inv:':['inventory','update'],'save-adjust:':['inventory','update'],'inv-del:':['inventory','delete'],'inv-del-confirm:':['inventory','delete'],
+  'inv-add':['inventory','create'],'inv-edit:':['inventory','update'],'inv-adjust:':['inventory','update'],'save-inv:':['inventory','update'],'save-inv:new':['inventory','create'],'save-adjust:':['inventory','update'],'inv-del:':['inventory','delete'],'inv-del-confirm:':['inventory','delete'],
   'inv-opname':['inventory','update'],'save-opname':['inventory','update'],
   'pr-new':['procurement','create'],'po-new':['procurement','create'],'po-quick':['procurement','create'],
   'doc-line-add':['procurement','create'],'doc-line-del:':['procurement','create'],'doc-save':['procurement','create'],
@@ -4944,6 +5102,7 @@ function clearMenuSearch(){
 }
 document.addEventListener('change',e=>{
   if(e.target.id==='adjMode'){adjModeChanged();return}
+  if(e.target.id==='invUnit'){invUnitChanged();return}
   if(e.target.id==='finFrom'){finFilter.from=e.target.value;render('finance',true);return}
   if(e.target.id==='finTo'){finFilter.to=e.target.value;render('finance',true);return}
   if(e.target.id==='finCat'){finFilter.cat=e.target.value;render('finance',true);return}

@@ -192,6 +192,14 @@ Struk pembayaran untuk pelanggan, dibuka lewat modul `core/receipt.js` — **sat
 
 - **Kolom “Diskon (Rp)” & “Uang diterima (Rp)” dihapus dari modal *Keranjang & pembayaran*.** Total yang dibayar selalu total keranjang; pesanan baru selalu tersimpan dengan `discount: 0`, `paid = total`, dan `change: 0`. Struk dan laporan tetap menampilkan diskon/uang dibayarkan untuk transaksi lama yang memang memiliki nilai tersebut.
 
+## Persediaan: aturan stok yang dijaga
+
+- **Semua perubahan stok melewati satu pintu (`pushStockLog`).** Setiap baris log menyimpan jenis, sumber transaksi (rujukan), stok **sebelum → sesudah**, nilai, pelaku, dan catatan; log bersifat **append-only** (maksimal 500 entri, 80 terakhir ditampilkan). Koreksi aman dilakukan dengan **menambah** baris `correction`, tidak pernah menimpa riwayat lama.
+- **Stok tidak pernah negatif.** Pemakaian resep hanya memotong `min(kebutuhan, stok)` dan sisa kebutuhan dicatat sebagai catatan log (`Kurang 1,5 kg · dipakai sebersedia`); penyesuaian “keluar” melebihi stok ditolak dengan pratinjau yang menampilkan proyeksi minus; validasi yang sama dilakukan **server** saat sinkronisasi (`stok harus angka 0 ke atas`).
+- **Pemotongan ganda dicegah** lewat penanda `bomApplied` pada pesanan (dan `restocked` saat pesanan dibatalkan), sehingga pembayaran dobel atau pembatalan berulang tidak pernah mengubah stok dua kali; pembatalan hanya mengembalikan jumlah yang memang sempat terpotong (snapshot `bomLines`).
+- **Angka form memakai parser kanonik** `parseAmount` (koma = desimal, titik = ribuan bila polanya `1.234.567`) — menyimpan ulang form tanpa mengubah apa pun tidak lagi mengubah `2,4` menjadi `24`, dan pratinjau penyesuaian tidak lagi di-clamp ke 0.
+- **Mengubah satuan mengonversi seluruh angka**: stok, stok minimum, harga beli, takaran resep, qty PR/PO (termasuk `recv`/`rej`), dan harga pemasok ikut dikonversi (kg↔g, liter↔ml, alias jumlah) sehingga jumlah fisik dan **nilai persediaan tetap sama**; satuan tak sebanding (mis. `ml` → `pcs`) ditolak selama masih ada stok/minimum atau dokumen yang memakai satuan lama. Konversi murni tercatat sebagai baris log **berjumlah 0** dengan catatan konversi, sehingga laporan “masuk” tidak membengkak.
+
 ## Deploy ke Cloudflare
 
 ```bat
@@ -267,7 +275,7 @@ git push -u origin main                 :: GitHub Actions otomatis build & deplo
 
 ### Pengujian otomatis
 
-Sepuluh skrip pengujian dijalankan terhadap `wrangler dev --port 8790 --local` (D1 lokal) — enam `.ps1` (PowerShell) dan empat `.mjs` (Node + Chrome headless):
+Sebelas skrip pengujian dijalankan terhadap `wrangler dev --port 8790 --local` (D1 lokal) — enam `.ps1` (PowerShell) dan lima `.mjs` (Node + Chrome headless):
 
 - `.uji-permisi.ps1` — 13 skenario API permission: cabut/kembalikan wewenang per staf (tanpa menyentuh staf lain), validasi ketat modul & aksi, data tetap utuh, tulis & API permission ditolak, preset per role berlaku langsung, serta modul **Antar Ke Meja** (dipilih di Wewenang) sebagai izin alternatif menulis pesanan.
 - `.uji-frontend.ps1` — uji headless Chrome: DOM badge status jadwal, foto `object-fit: contain`, menu/halaman ditolak saat wewenang dicabut, notifikasi pencabutan langsung saat halaman terbuka (poll izin 20 detik), serta data tetap terkirim ke staf yang dicabut.
@@ -276,6 +284,7 @@ Sepuluh skrip pengujian dijalankan terhadap `wrangler dev --port 8790 --local` (
 - `.uji-undangan.ps1` — 25+ pemeriksaan alur **undangan staf via Gmail**: undangan dibuat `pending` dengan peran benar, validasi email/role/duplikat, undangan orang lain tidak bocor di `/mine`, notifikasi tampil setelah calon staf mendaftar dengan email yang diundang, pemilik lain ditolak (403), **Terima** menjadikan staf aktif dengan izin role waiter, **Tolak** tanpa keanggotaan, proses ganda ditolak (409), pembatalan oleh owner, dan seluruh alur tercatat di audit log.
 - `.uji-pesanan-staf.ps1` — 25 pemeriksaan **pemesanan menu oleh staf** (API + headless Chrome): preset `kasir` (`orders:update`, `pos:create`, `reservations:update`, `menu` read-only), Kasir memesan produk **bervarian** dari Menu aktif — pilih varian Large → keranjang → bayar — tanpa satu pun toast “tidak punya izin” (dulu seluruh produk bervarian terblokir), struk memakai harga varian, pesanan tercatat di server dan terlihat oleh Owner, tombol mati (Tambah menu, ✎, Kosongkan) tersembunyi, serta uji negatif: staf tanpa izin Pesanan/Antar ditolak di depan dengan pesan jelas.
 - `.uji-operasional.mjs` — 30 pemeriksaan **modul operasional** (API + Chrome headless): validasi ketat kunci baru (`inventory` expiry/batch, `recipes` yield/varian, `suppliers`, `purchaseRequests`, `purchaseOrders`, `recipeLog`) — data rusak ditolak server, kasir **ditolak** menulis kunci pengadaan, **stok tetap 10 setelah PO dibuat** (belum diterima), lalu alur nyata di UI: tambah pemasok → ajukan PR → setujui → jadi PO → terima barang → **stok bertambah tepat 5**; plus halaman Keuangan (Utang pemasok, kartu Kas/Bank) dan Laporan (5 jenis laporan, bebas angka contoh statis) ikut terverifikasi render.
+- `.uji-inventory.mjs` — 58 pemeriksaan **modul Persediaan** (API + Chrome headless): skenario bahan uji (beras 10 kg, ayam 2 kg/min 5, bumbu 3 kg, sayur 2 kg, minyak 5 liter), status **Rendah** + kartu "Stok menipis" + peringatan otomatis di Alert Center, matematika stok (potong resep berurutan), setiap baris riwayat punya pelaku & `sebelum + jumlah = sesudah`, penyesuaian keluar + **penolakan** keluar melebihi stok, opname fisik, konversi liter→ml (angka, minimum, harga, takaran resep, nilai persediaan tetap), parsing desimal + regresi simpan-ulang, pembayaran POS memotong resep bergaris minus, stok kurang → berhenti di 0 dengan catatan selisih, pemotongan ganda ditolak `bomApplied`, satuan tak sebanding (ml→pcs) ditolak, server menolak stok negatif, dan kasir ditolak menulis inventory.
 - `.uji-e2e.mjs`, `.uji-settings.mjs`, `.uji-ui.mjs` — regresi API & UI: penonaktifan staf (sesi dicabut), profil pribadi tersimpan, modul Pengaturan selalu terbuka bagi staf, serta tombol staff glow & kolom No Telepon.
 
 Folder aset yang disajikan `wrangler dev` bisa dioverride lewat variabel lingkungan `RASA_ASSETS` (default: `%TEMP%\rasa-assets`).
